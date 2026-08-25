@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35707.178
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FZ4P", "Source\FZ4P.csproj", "{26750997-64CE-4A91-988A-CBA18CC2A08B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Debug|x64.ActiveCfg = Debug|x64
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Debug|x64.Build.0 = Debug|x64
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Release|x64.ActiveCfg = Release|Any CPU
+		{26750997-64CE-4A91-988A-CBA18CC2A08B}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4DA72E86-1832-48A7-90ED-C6B7237A6645}
+	EndGlobalSection
+EndGlobal

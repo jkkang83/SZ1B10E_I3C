@@ -1,0 +1,418 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{26750997-64CE-4A91-988A-CBA18CC2A08B}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>FZ4P</RootNamespace>
+    <AssemblyName>6AxisTester</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>fz_icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetZone>LocalIntranet</TargetZone>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GenerateManifests>false</GenerateManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>Properties\app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <LangVersion>7.3</LangVersion>
+    <ErrorReport>prompt</ErrorReport>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>7.3</LangVersion>
+    <ErrorReport>prompt</ErrorReport>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="alglibnet2">
+      <HintPath>..\lib\alglibnet2.dll</HintPath>
+    </Reference>
+    <Reference Include="Basler.Pylon">
+      <HintPath>..\lib\Basler.Pylon.dll</HintPath>
+    </Reference>
+    <Reference Include="CommModule">
+      <HintPath>..\lib\CommModule.dll</HintPath>
+    </Reference>
+    <Reference Include="dln.net">
+      <HintPath>..\lib\dln.net.dll</HintPath>
+    </Reference>
+    <Reference Include="FAutoLearn, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FAutoLearn.dll</HintPath>
+    </Reference>
+    <Reference Include="MathNet.Numerics, Version=5.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\MathNet.Numerics.5.0.0\lib\net461\MathNet.Numerics.dll</HintPath>
+    </Reference>
+    <Reference Include="Matrox.MatroxImagingLibrary">
+      <HintPath>C:\Program Files\Matrox Imaging\MIL\MIL.NET\Matrox.MatroxImagingLibrary.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=10.0.0.5, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.10.0.5\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.DependencyInjection, Version=10.0.0.4, Culture=neutral, PublicKeyToken=adb9793829ddae60, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Extensions.DependencyInjection.10.0.4\lib\net462\Microsoft.Extensions.DependencyInjection.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions, Version=10.0.0.4, Culture=neutral, PublicKeyToken=adb9793829ddae60, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.Extensions.DependencyInjection.Abstractions.10.0.4\lib\net462\Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenCvSharp, Version=1.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
+      <HintPath>..\packages\OpenCvSharp4.4.5.5.20211231\lib\netstandard2.0\OpenCvSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenCvSharp.Extensions, Version=1.0.0.0, Culture=neutral, PublicKeyToken=6adad1e807fea099, processorArchitecture=MSIL">
+      <HintPath>..\packages\OpenCvSharp4.Extensions.4.5.5.20211231\lib\netstandard2.0\OpenCvSharp.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Drawing.Common.10.0.3\lib\net462\System.Drawing.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="System.IO.Pipelines, Version=10.0.0.5, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.IO.Pipelines.10.0.5\lib\net462\System.IO.Pipelines.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Encodings.Web, Version=10.0.0.5, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Text.Encodings.Web.10.0.5\lib\net462\System.Text.Encodings.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json, Version=10.0.0.5, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Text.Json.10.0.5\lib\net462\System.Text.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.4.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Threading.Tasks.Extensions.4.6.3\lib\net462\System.Threading.Tasks.Extensions.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Windows.Forms.DataVisualization" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Deployment" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="BarcodeReader\CommandLine\IScanCommandLine.cs" />
+    <Compile Include="BarcodeReader\CommandLine\Keyens\SR_X300.cs" />
+    <Compile Include="BarcodeReader\FileSelector\CommunicationTypeSelector.cs" />
+    <Compile Include="BarcodeReader\Scanner.cs" />
+    <Compile Include="Bootstrapper.cs" />
+    <Compile Include="Commons\Enums\ADS1013.cs" />
+    <Compile Include="Commons\Enums\GPIONumber.cs" />
+    <Compile Include="Commons\Events\ArrayChangedEventArgs.cs" />
+    <Compile Include="Commons\Events\CustomPropertyChangedEventArgs.cs" />
+    <Compile Include="Commons\Events\GenericEventArgs.cs" />
+    <Compile Include="Commons\Helper\AppHelper.cs" />
+    <Compile Include="Commons\Helper\BitDataHelper.cs" />
+    <Compile Include="Commons\Helper\CalculatorHelper.cs" />
+    <Compile Include="Commons\Helper\JsonHelper.cs" />
+    <Compile Include="Commons\Helper\PropertiesHelper.cs" />
+    <Compile Include="Commons\ModelChangedBase.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Commons\Services\ActuatorServo\Concreate\ActuatorActionExecutor_1C87.cs" />
+    <Compile Include="Commons\Services\ActuatorServo\Concreate\IActuatorActionExecutor.cs" />
+    <Compile Include="Commons\Services\ActuatorServo\Context\DriverICServoContext.cs" />
+    <Compile Include="Commons\Services\Dialog\Const\OpenDialogResultFunc_X.cs" />
+    <Compile Include="Commons\Services\Dialog\Const\OpenDialogResultFunc_Y.cs" />
+    <Compile Include="Commons\Services\Dialog\Context\OpenDialogContext.cs" />
+    <Compile Include="Commons\Services\Dialog\DialogResult\IDialogResultFunc.cs" />
+    <Compile Include="Commons\Services\Dialog\DialogResult\IDiaLogReturnData.cs" />
+    <Compile Include="Commons\Services\Dialog\Const\OpenDialogResultFunc.cs" />
+    <Compile Include="Commons\Services\Dialog\Const\OpenDialogResultFunc_AF.cs" />
+    <Compile Include="Commons\Services\Dialog\Params\OpenDialogParams.cs" />
+    <Compile Include="Commons\Services\DriveICManualMove\Concreate\IManaualMove.cs" />
+    <Compile Include="Commons\Services\DriveICManualMove\Concreate\ManualMove_1C87.cs" />
+    <Compile Include="Commons\Services\DriveICManualMove\Concreate\ManualMove_2810.cs" />
+    <Compile Include="Commons\Services\DriveICManualMove\Context\DriveMoveICContext.cs" />
+    <Compile Include="Commons\Type\KeyValue.cs" />
+    <Compile Include="Commons\Type\LineModel.cs" />
+    <Compile Include="Commons\Type\Point.cs" />
+    <Compile Include="Commons\Type\RateStrokeModel.cs" />
+    <Compile Include="DebounceEventArgs.cs" />
+    <Compile Include="DriverIc\DlnAdapter.cs" />
+    <Compile Include="DriverIc\Esp32WifiDevice.cs" />
+    <Compile Include="DriverIc\INTERFACE.cs" />
+    <Compile Include="DriverIc\Interfaces\IAK73XX.cs" />
+    <Compile Include="DriverIc\Interfaces\IDriverIC_AF_Function.cs" />
+    <Compile Include="DriverIc\Interfaces\IDriverIC_FRA_Function.cs" />
+    <Compile Include="DriverIc\Interfaces\IDriverIC_OIS_Function.cs" />
+    <Compile Include="DriverIc\MoveHall\Context\MoveHallContext.cs" />
+    <Compile Include="DriverIc\MoveHall\IMoveHall.cs" />
+    <Compile Include="DriverIc\MoveHall\MoveHall_12Bit.cs" />
+    <Compile Include="DriverIc\MoveHall\MoveHall_13Bit.cs" />
+    <Compile Include="DriverIc\Ra8m1I3cAdapter.cs" />
+    <Compile Include="DriverIc\ReadHall\Context\ReadHallContext.cs" />
+    <Compile Include="DriverIc\ReadHall\IReadHall.cs" />
+    <Compile Include="DriverIc\ReadHall\ReadHall_12bit.cs" />
+    <Compile Include="DriverIc\ReadHall\ReadHall_13bit.cs" />
+    <Compile Include="DriverIc\SlaveID\Context\StrategySlaveIDContext.cs" />
+    <Compile Include="DriverIc\SlaveID\IStrategySlaveID.cs" />
+    <Compile Include="DriverIc\SlaveID\ResultData\ActuatorSlaveData.cs" />
+    <Compile Include="DriverIc\SlaveID\Strategy_SlaveID_1C87.cs" />
+    <Compile Include="DriverIc\SlaveID\Strategy_SlaveID_2810.cs" />
+    <Compile Include="Extensions\FIndResultExtension.cs" />
+    <Compile Include="Logic\ISetSavePath.cs" />
+    <Compile Include="Logic\PeakCurrent\AFPeakCurrentLogic.cs" />
+    <Compile Include="Logic\PeakCurrent\Configration\PeakCurrentConfigration.cs" />
+    <Compile Include="Logic\PeakCurrent\Configration\Base\PeakCurrentConfigBase.cs" />
+    <Compile Include="Logic\PeakCurrent\Interfaces\IPeakCurrentExecutor.cs" />
+    <Compile Include="Logic\PeakCurrent\OIS_X_PeakCurrentLogic.cs" />
+    <Compile Include="Logic\PeakCurrent\OIS_Y_PeakCurrentLogic.cs" />
+    <Compile Include="Logic\PeakCurrent\Params\AFPeakCurrentParam.cs" />
+    <Compile Include="Logic\PeakCurrent\Params\Base\PeakCurrentParamBase.cs" />
+    <Compile Include="Logic\PeakCurrent\Params\OIS_X_PeakCurrentParam.cs" />
+    <Compile Include="Logic\PeakCurrent\Params\OIS_Y_PeakCurrentParam.cs" />
+    <Compile Include="Logic\PeakCurrent\PeakCurrentFactory.cs" />
+    <Compile Include="Logic\PeakCurrent\ReturnType\PeakCurrentReturn.cs" />
+    <Compile Include="Process\ActroPannel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Process\AFLinCompCoef.cs" />
+    <Compile Include="Logic\Dependencys\DependencyParams.cs" />
+    <Compile Include="Logic\IOpenLoopExecutor.cs" />
+    <Compile Include="Logic\OpenLoopStrockCheck.cs" />
+    <Compile Include="Logic\OpenLoopStrockCheckedFactory.cs" />
+    <Compile Include="Logic\OpenLoopStrockCheckImageSave.cs" />
+    <Compile Include="Process\Interfaces\ILogView.cs" />
+    <Compile Include="Process\OISLinCompCoef.cs" />
+    <Compile Include="Process\PROCESSParam.cs" />
+    <Compile Include="Process\PROCESS.cs" />
+    <Compile Include="DriverIc\DLN.cs" />
+    <Compile Include="DriverIc\AK73XX.cs" />
+    <Compile Include="Process\RECIPE.cs" />
+    <Compile Include="Process\STATICS.cs" />
+    <Compile Include="Process\TCPComm.cs" />
+    <Compile Include="Process\TiltGraph.cs" />
+    <Compile Include="Process\UserPROCESS.cs" />
+    <Compile Include="SignalDebounceLogic.cs" />
+    <Compile Include="UI\F_Barcode.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Barcode.Designer.cs">
+      <DependentUpon>F_Barcode.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\CustomUI\ucBarcodePannel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="UI\CustomUI\ucBarcodePannel.Designer.cs">
+      <DependentUpon>ucBarcodePannel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Manual.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Manual.Designer.cs">
+      <DependentUpon>F_Manual.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Password2.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Password2.Designer.cs">
+      <DependentUpon>F_Password2.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Password.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Password.Designer.cs">
+      <DependentUpon>F_Password.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Start.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Start.Designer.cs">
+      <DependentUpon>F_Start.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Main.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Main.Designer.cs">
+      <DependentUpon>F_Main.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Manage.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Manage.Designer.cs">
+      <DependentUpon>F_Manage.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UI\F_SystemLogView.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_SystemLogView.Designer.cs">
+      <DependentUpon>F_SystemLogView.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\F_Vision.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\F_Vision.Designer.cs">
+      <DependentUpon>F_Vision.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Vision\MyMatrox.cs" />
+    <Compile Include="Vision\MyMicroLibrary.cs" />
+    <Compile Include="Vision\MySingleton.cs" />
+    <EmbeddedResource Include="UI\F_Barcode.resx">
+      <DependentUpon>F_Barcode.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\CustomUI\ucBarcodePannel.resx">
+      <DependentUpon>ucBarcodePannel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Manual.resx">
+      <DependentUpon>F_Manual.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Password2.resx">
+      <DependentUpon>F_Password2.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Password.resx">
+      <DependentUpon>F_Password.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Start.resx">
+      <DependentUpon>F_Start.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Main.resx">
+      <DependentUpon>F_Main.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Manage.resx">
+      <DependentUpon>F_Manage.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <SubType>Designer</SubType>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_SystemLogView.resx">
+      <DependentUpon>F_SystemLogView.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="UI\F_Vision.resx">
+      <DependentUpon>F_Vision.cs</DependentUpon>
+    </EmbeddedResource>
+    <None Include="packages.config" />
+    <None Include="Properties\app.manifest" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="fz_icon.ico" />
+    <None Include="Image\BtnYP.png" />
+    <None Include="Image\BtnYN.png" />
+    <None Include="Image\BtnRP.png" />
+    <None Include="Image\BtnRN.png" />
+    <None Include="Image\BtnMP.png" />
+    <None Include="Image\BtnMN.png" />
+    <None Include="Image\BtnMK.png" />
+    <None Include="Image\BtnLightBlueP.png" />
+    <None Include="Image\BtnLightBlueN.png" />
+    <None Include="Image\BtnKP.png" />
+    <None Include="Image\BtnKN.png" />
+    <None Include="Image\BtnGP.png" />
+    <None Include="Image\BtnGN.png" />
+    <None Include="Image\BtnDRP.png" />
+    <None Include="Image\BtnDRN.png" />
+    <None Include="Image\BtnDOP.png" />
+    <None Include="Image\BtnDON.png" />
+    <None Include="Image\BtnDBP.png" />
+    <None Include="Image\BtnDBN.png" />
+    <None Include="Image\BtnDarkGP.png" />
+    <None Include="Image\BtnDarkGN.png" />
+    <None Include="Image\BtnDarkBP.png" />
+    <None Include="Image\BtnDarkBN.png" />
+    <None Include="Image\BtnCP.png" />
+    <None Include="Image\BtnCN.png" />
+    <None Include="Image\BtnBP.png" />
+    <None Include="Image\BtnBN.png" />
+    <None Include="Image\BtnAP.png" />
+    <None Include="Image\BtnAN.png" />
+    <None Include="Image\ArrU2.png" />
+    <None Include="Image\ArrU.png" />
+    <None Include="Image\ArrR2.png" />
+    <None Include="Image\ArrR.png" />
+    <None Include="Image\ArrL2.png" />
+    <None Include="Image\ArrL.png" />
+    <None Include="Image\ArrD2.png" />
+    <None Include="Image\ArrD.png" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Import Project="..\packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets" Condition="Exists('..\packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets')" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>이 프로젝트는 이 컴퓨터에 없는 NuGet 패키지를 참조합니다. 해당 패키지를 다운로드하려면 NuGet 패키지 복원을 사용하십시오. 자세한 내용은 http://go.microsoft.com/fwlink/?LinkID=322105를 참조하십시오. 누락된 파일은 {0}입니다.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets'))" />
+  </Target>
+</Project>

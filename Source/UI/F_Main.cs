@@ -1,0 +1,1864 @@
+﻿
+using FZ4P.BarcodeReader;
+using FZ4P.BarcodeReader.FileSelector;
+using FZ4P.Commons.Helper;
+using FZ4P.Commons.Services;
+using FZ4P.Commons.Services.Context;
+using FZ4P.Commons.Services.Dialog.Const;
+using FZ4P.Commons.Services.DialogResult;
+using FZ4P.UI;
+using Microsoft.Extensions.DependencyInjection;
+using Modules.Communication.Params;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Button;
+
+namespace FZ4P
+{
+    public partial class F_Main : Form, IDiaLogReturnData
+    {
+        private readonly IServiceProvider _serviceProvider;
+        private readonly F_Start fStart = null;
+
+        private Global m__G = null;
+        public Condition Condition { get { return STATIC.Rcp.Condition; } }
+        public Recipe Rcp { get { return STATIC.Rcp; } }
+        public Spec Spec { get { return STATIC.Rcp.Spec; } }
+        public Option Option { get { return STATIC.Rcp.Option; } }
+        public Model Model { get { return STATIC.Rcp.Model; } }
+        public CurrentPath Current { get { return STATIC.Rcp.Current; } }
+        public Process Process { get { return STATIC.Process; } }
+
+        public CommunicationTypeSelector CommunicationTypeParamSelector { get { return STATIC.ScannerParamSelector; } }
+        public Scanner Scanner { get { return STATIC.Scanner; } }
+
+        public F_Main(F_Start deviceForm)
+        {
+            try
+            {
+                InitializeComponent();
+
+                fStart = deviceForm;
+
+                STATIC.StateChange += Form_StateChange;
+                fStart.Log("Program Start !!");
+
+                m__G = Global.GetInstance();
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.ToString());
+            }
+        }
+
+        public F_Main(IServiceProvider serviceProvider, F_Start deviceForm)
+        {
+            try
+            {
+                InitializeComponent();
+                fStart = deviceForm;
+
+                fStart.Log("Program Start !!");
+                fStart.OnComplate += FStart_OnComplate;
+                STATIC.StateChange += Form_StateChange;
+
+                m__G = Global.GetInstance();
+
+                _serviceProvider = serviceProvider;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.ToString());
+            }
+        }
+
+        private void FStart_OnComplate(object sender, bool e)
+        {
+            
+        }
+
+        private void Form_StateChange(object sender, EventArgs e)
+        {
+            switch (STATIC.State)
+            {
+                case (int)STATIC.STATE.Manage:
+                    P_Main.Hide();
+                    P_Manager.Location = new Point(0, 0);
+                    P_Manager.Size = new Size(1920, 1080);
+                    P_Manager.Show();
+                    P_Vision.Location = new Point(59, 1026);
+                    P_Vision.Size = new Size(50, 31);
+                    P_Vision.Hide();
+                    STATIC.fManage.BindingUIModel(this.Text);
+                    Process.StartI2CMonitor();
+                    break;
+                case (int)STATIC.STATE.Main:
+                    //InitCondition();
+                    //InitDataSpec();
+                    //F_Password fpw = new F_Password();
+                    //DialogResult dr = fpw.ShowDialog();
+                    //if(dr == DialogResult.OK)
+                    //{
+                        P_Main.Show();
+                        P_Manager.Location = new Point(3, 1026);
+                        P_Manager.Size = new Size(50, 31);
+                        P_Manager.Hide();
+                        P_Vision.Location = new Point(59, 1026);
+                        P_Vision.Size = new Size(50, 31);
+                        P_Vision.Hide();
+                    //}
+                    //else { }
+                    break;
+                case (int)STATIC.STATE.Vision:
+                    P_Main.Hide();
+                    P_Vision.Location = new Point(0, 0);
+                    P_Vision.Size = new Size(1920, 1080);
+                    P_Vision.Show();
+                    Process.I2CMonitorStartFlag = false;
+                    break;
+            }
+        }
+        private void F_Main_Load(object sender, EventArgs e)
+        {
+            List<Form> fList = new List<Form>() { STATIC.fManage, STATIC.fVision };
+            for (int i = 0; i < fList.Count; i++)
+            {
+                fList[i].TopLevel = false;
+                fList[i].BackColor = SystemColors.ControlLight;
+                fList[i].FormBorderStyle = FormBorderStyle.None;
+            }
+
+            P_Manager.Controls.Add(STATIC.fManage);
+            P_Vision.Controls.Add(STATIC.fVision);
+
+            //fStart.Log("Vision Initial Prossess..");
+            //if (!Process.IsVirtual)
+            //{
+            //    m__G.Initial_Vision(2);  //  SOLIOS = 1, RADIENT = 2, ...
+            //    STATIC.fVision.Show();
+            //}
+            STATIC.fManage.Show();
+
+            InitCondition();
+
+            InitDataSpec();
+            InitRetryGrid();
+            InitOption();
+
+            InitTodoList();
+
+            InitModel();
+
+            InitScripPath();
+
+            LoadLastModelFileList();
+
+            //if (!Process.IsVirtual) Task.WaitAll(Task.Factory.StartNew(() => { while (!STATIC.fVision.mLoaded) { Thread.Sleep(100); } }));
+
+            fStart.Log("Vision Initial Complete.");
+
+            //if (!Process.IsVirtual)
+            //{
+            //    STATIC.fVision.BufferInit();
+
+            //    STATIC.fVision.StartLive();
+
+            //    Thread.Sleep(100);
+
+            //    STATIC.fVision.GrabHalt();
+
+            //}
+
+            //try
+            //{
+            //    int afVer = GetPidVersion(Current.AFPidPath);
+            //    int oisVer = GetPidVersion(Current.XPidPath);
+
+            //    this.Text += $"_AF_PID_Ver{afVer}_OIS_PID_Ver{oisVer}";
+
+            //    Process.AfVer = afVer;
+            //    Process.OisVer = oisVer;
+            //}
+            //catch (Exception ex)
+            //{
+            //    MessageBox.Show(
+            //        $"PID Version 확인 중 오류가 발생했습니다.\r\n{ex.Message}",
+            //        "PID Version Error",
+            //        MessageBoxButtons.OK,
+            //        MessageBoxIcon.Error);
+            //}
+
+            STATIC.State = (int)STATIC.STATE.Manage;
+
+            //if (!Process.IsVirtual)
+            //{
+            //    STATIC.fVision.SetExposure(0, STATIC.Rcp.vsFile.Exposure);
+            //    //STATIC.fVision.SetRawGainNGamma(STATIC.Rcp.vsFile.RawGain, STATIC.Rcp.vsFile.Gamma);
+            //    //STATIC.fVision.SetExposure(0, STATIC.Rcp.vsFile.Exposure);
+            //    //STATIC.fVision.SetRawGainNGamma(STATIC.Rcp.vsFile.RawGain, STATIC.Rcp.vsFile.Gamma);
+            //}
+            fStart.Close();
+
+            if (Model.MCType != "Normal")
+            {
+                STATIC.TcpConn.OnReceive += TcpConn_OnReceive;
+                STATIC.TcpConn.OnStatus += TcpConn_OnStatus;
+                if (Model.MCType == "Master") STATIC.TcpConn.connect(5000);
+                else if (Model.MCType == "Handler") STATIC.TcpConn.connect("192.168.1.100", 5000);
+                else if(Model.MCType == "Slave") STATIC.TcpConn.connect("192.168.100.2", 5000);
+
+            }
+
+            if (Rcp.Option.ScannerUse)
+            {
+                try
+                {
+                    var parmas = CommunicationTypeParamSelector.GetFileParams();
+                    Scanner.SetParam(parmas);
+                    Scanner.Connection();
+                    Scanner.OnReceveData += OnRecive;
+                    Scanner.OnScannerMessage += Scanner_OnScannerMessage;
+
+                    //STATIC.fManage.Lazyinit();
+                }
+                catch (Exception ex)
+                {
+                    STATIC.fSystemLogView.TextView($"Scanner Configurator : {ex.Message}");
+                }
+            }
+            STATIC.fVision.MyOwner = this;
+
+
+
+            //Process.StartI2CMonitor();
+        }
+        private int GetPidVersion(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("PID 파일 경로가 비어 있습니다.");
+
+            // 경로를 제외한 파일명만 가져오고 확장자를 제거한다.
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+
+            // 파일명 마지막에 있는 연속된 숫자를 모두 가져온다.
+            Match match = Regex.Match(fileName, @"(\d+)$");
+
+            if (!match.Success)
+            {
+                throw new FormatException(
+                    $"PID 파일명 마지막에서 Version 숫자를 찾을 수 없습니다.\r\n" +
+                    $"파일 경로: {filePath}");
+            }
+
+            int version;
+
+            if (!int.TryParse(match.Groups[1].Value, out version))
+            {
+                throw new FormatException(
+                    $"PID Version을 숫자로 변환할 수 없습니다.\r\n" +
+                    $"Version 문자열: {match.Groups[1].Value}");
+            }
+
+            return version;
+        }
+        private void Scanner_OnScannerMessage(object sender, string e)
+        {
+            STATIC.fSystemLogView.TextView(e);
+        }
+
+        private void OnRecive(object sender, string data)
+        {
+            if(Process.m_strBarcoe[0].Length == 0)
+                Process.m_strBarcoe[0] = data;
+        }
+
+        private void TcpConn_OnStatus(bool isCon)
+        {
+            STATIC.fManage.SetConStatus(isCon);
+        }
+        object ReceiveLock = new object();
+        object resetlock = new object();
+        private void TcpConn_OnReceive(List<string> data)
+        {
+            lock (ReceiveLock)
+            {
+                ReciveSystemLogMessage(data);
+                for (int j = 0; j < data.Count; j++)
+                {
+                    if (data[j].Contains("Res"))
+                    {
+
+                        string[] split = data[j].Split('.');
+                        
+                        STATIC.fManage.SetInforViewOnComm(split[1]);
+                    }
+                    else if (data[j].Contains("Clear"))
+                    {
+                        STATIC.fManage.SafeControlViewOnComm();
+                    }
+                    else if (data[j].Contains("Home"))
+                    {
+                        Process.UnloadSeq();
+                    }
+                    else if (data[j].Contains("Start"))
+                    {
+                        if (STATIC.Dln.IsRun) return;
+                        var split = data[j].Split(',');
+
+                        if (split.Length != 2)
+                        {
+                            STATIC.fSystemLogView.TextView($"Data Freame Exception :  Length[{split.Length}] /  Data [{string.Join(" | ", data)}]");
+                            return;
+                        }
+                        else
+                        {
+                            char STX = (char)0x02;
+                            char ETX = (char)0x03;
+                            Process.m_strBarcoe[0] = split[1].Replace("\r", "")
+                                                             .Replace("\n", "")
+                                                             .Replace(STX.ToString(), "")
+                                                             .Replace(ETX.ToString(), "")
+                                                             .Trim();
+                            Process.RepeatRun = 1;
+                            lock (resetlock)
+                            {
+                                Process.ClearChart();
+
+                                foreach (var l in Process.ViewLog) l.Clear();
+                            }
+
+                            Process.RunTest(2);
+                        }
+                    }
+                    else if (data[j].Contains("Open"))
+                    {
+                        Process.UnloadSeq();
+                        if (!Option.SocketSensorUse) Thread.Sleep(2000);
+                        STATIC.TcpConn.SendMessage("Open", STATIC.TcpConn.TCPCOnState);
+                        STATIC.fSystemLogView.TextView($"SendMessage : Open");
+
+                    }
+                }
+
+            }
+        }
+
+        private void ReciveSystemLogMessage(List<string> reciveData)
+        {
+            string reciveMessage = string.Empty;
+            foreach (var sendMessage in reciveData) {
+                reciveMessage += sendMessage;
+            }
+            STATIC.fSystemLogView?.TextView($"Handler Recive Message : {reciveMessage}");
+        }
+
+        private void NotifyFrameError(string frame)
+        {
+            BeginInvoke(new Action(() =>
+            {
+                MessageBox.Show($"Data Frame Exception : {frame}");
+            }));
+        }
+
+        public string mFile4ModelFileList = "ModelFileList.txt";
+        bool bLoadLastModelFile = true;
+
+        public bool LoadLastModelFileList()
+        {
+            if (!File.Exists(m__G.m_RootDirectory + "\\DoNotTouch\\" + mFile4ModelFileList))
+                return false;
+
+            StreamReader rd = new StreamReader(m__G.m_RootDirectory + "\\DoNotTouch\\" + mFile4ModelFileList);
+            string allstring = rd.ReadToEnd();
+            rd.Close();
+            string[] eachLine = allstring.Split("\r\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+            List<string> lPreparedModelFile = new List<string>();
+            foreach (string filename in eachLine)
+            {
+                lPreparedModelFile.Add(filename);
+                lbxModelFiles.Items.Add(filename);
+            }
+            lbxModelFiles.SelectedIndex = eachLine.Length - 1;
+            STATIC.fVision.SetModelFileList(lPreparedModelFile.ToArray());
+            bLoadLastModelFile = false;
+            return true;
+        }
+        //============================================================
+        private void F_Main_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            DataIO.SerializeToXMLFile(STATIC.Rcp.YieldItem, STATIC.YieldItemPath);
+            DataIO.SerializeToXMLFile(STATIC.Rcp.yield, STATIC.YieldPath);
+            DataIO.SerializeToXMLFile(Spec, STATIC.SpecDir + Current.SpecName);
+            DataIO.SerializeToXMLFile(STATIC.Rcp.tt, STATIC.TestTimeDir);
+            //if (!Process.IsVirtual)
+            //{
+            //    STATIC.fVision.GrabHalt();
+            //    Process.LEDs_All_On(0, false);
+            //}
+            //if (Model.MCType != "Normal") 
+            //{ 
+            //    STATIC.TcpConn.SendMessage("Disconnected", STATIC.TcpConn.TCPCOnState); 
+            //    STATIC.TcpConn.disconnect();
+            //    STATIC.fSystemLogView.TextView($"SendMessage : Disconnected");
+            //}
+
+        }
+        private void InitCondition()
+        {
+            Type dgvType = ConditinGrid.GetType();
+            PropertyInfo pi = dgvType.GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
+            pi.SetValue(ConditinGrid, true, null);
+
+            Actionbox.Items.Clear();
+            for (int i = 0; i < Process.ItemList.Count; i++)
+            {
+                Actionbox.Items.Add(Process.ItemList[i].Name);
+            }
+
+            TodoBox.Items.Clear();
+            for (int i = 0; i < Condition.ToDoList.Count; i++)
+            {
+                TodoBox.Items.Add(Condition.ToDoList[i]);
+            }
+            RecipeFileName.Text = Current.ConditionName;
+
+            ConditinGrid.ColumnCount = 4;
+            ConditinGrid.Font = new Font("Calibri", 10, FontStyle.Bold);
+            for (int i = 0; i < ConditinGrid.ColumnCount; i++)
+            {
+                ConditinGrid.Columns[i].SortMode = DataGridViewColumnSortMode.NotSortable;
+            }
+            ConditinGrid.RowHeadersVisible = false;
+            ConditinGrid.BackgroundColor = Color.LightGray;
+            ConditinGrid.Columns[0].Name = "Class";
+            ConditinGrid.Columns[1].Name = "Condition Item";
+            ConditinGrid.Columns[2].Name = "Value";
+            ConditinGrid.Columns[3].Name = "Unit";
+
+            ConditinGrid.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            ConditinGrid.Columns[1].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            ConditinGrid.Columns[2].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            ConditinGrid.Columns[3].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+
+            ConditinGrid.Columns[0].Width = 110;
+            ConditinGrid.Columns[1].Width = 140;
+            ConditinGrid.Columns[2].Width = 80;
+            ConditinGrid.Columns[3].Width = 55;
+
+            ConditinGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            ConditinGrid.ColumnHeadersHeight = 22;
+
+            int effRowNum = 0;
+            bool bColorChange = true;
+            ConditinGrid.Rows.Clear();
+
+            PropertyDescriptorCollection props = TypeDescriptor.GetProperties(Condition);
+            for (int i = 0; i < props.Count; i++)
+            {
+                string Category = DataIO.GetCustomAttribute<ConditionAttribute>(props[i])?.Category;
+                string DisplayName = DataIO.GetCustomAttribute<ConditionAttribute>(props[i])?.DisplayName;
+                string Unit = DataIO.GetCustomAttribute<ConditionAttribute>(props[i])?.Unit;
+
+
+                if (Category != "ToDoList")
+                {
+                    ConditinGrid.Rows.Add(Category, DisplayName, props[i].GetValue(Condition)?.ToString(), Unit);
+
+                    if (i != 0)
+                    {
+                        string BeforeCategory = DataIO.GetCustomAttribute<ConditionAttribute>(props[i - 1])?.Category;
+                        if (BeforeCategory != Category) bColorChange = !bColorChange;
+                        if (bColorChange)
+                        {
+
+                            ConditinGrid[0, effRowNum].Style.BackColor = Color.Lavender;
+                            ConditinGrid[1, effRowNum].Style.BackColor = Color.Lavender;
+                            ConditinGrid[3, effRowNum].Style.BackColor = Color.Lavender;
+                        }
+                        else
+                        {
+                            ConditinGrid[0, effRowNum].Style.BackColor = Color.White;
+                            ConditinGrid[1, effRowNum].Style.BackColor = Color.White;
+                            ConditinGrid[3, effRowNum].Style.BackColor = Color.White;
+                        }
+                        if (BeforeCategory == Category) ConditinGrid.Rows[effRowNum].Cells[0].Style.ForeColor = ConditinGrid.Rows[effRowNum].Cells[0].Style.BackColor;
+                    }
+                    effRowNum++;
+                }
+            }
+
+            for (int i = 0; i < effRowNum; i++)
+            {
+                ConditinGrid.Rows[i].Height = 15;
+                ConditinGrid.Rows[i].Resizable = DataGridViewTriState.False;
+                ConditinGrid.Rows[i].DefaultCellStyle.Font = new Font("Calibri", 9, FontStyle.Bold);
+                ConditinGrid[1, i].Style.Font = new Font("Calibri", 9, FontStyle.Bold);
+                ConditinGrid[2, i].Style.Font = new Font("Calibri", 9, FontStyle.Bold);
+                ConditinGrid[3, i].Style.Font = new Font("Calibri", 9, FontStyle.Italic);
+            }
+
+            for (int colum = 2; colum < 3; colum++)
+            {
+                for (int row = 0; row < effRowNum; row++)
+                {
+                    ConditinGrid[colum, row].Style.BackColor = Color.LightGray;
+                    ConditinGrid.ReadOnly = true;
+                }
+            }
+
+            IsEdit();
+        }
+        private void IsEdit()
+        {
+            if (EditCondition.Checked)
+            {
+                ConditinGrid.ReadOnly = false;
+                for (int row = 0; row < ConditinGrid.Rows.Count; row++)
+                {
+                    {
+                        ConditinGrid[2, row].Style.BackColor = Color.White;
+                        ConditinGrid[0, row].ReadOnly = true;
+                        ConditinGrid[1, row].ReadOnly = true;
+                        ConditinGrid[3, row].ReadOnly = true;
+
+                    }
+                }
+            }
+            else
+            {
+                ConditinGrid.ReadOnly = true;
+                for (int row = 0; row < ConditinGrid.Rows.Count; row++)
+                {
+                    ConditinGrid[2, row].Style.BackColor = Color.LightGray;
+                }
+            }
+            if (EditSpec.Checked == true)
+            {
+                SpecGrid.ReadOnly = false;
+                for (int row = 0; row < SpecGrid.Rows.Count; row++)
+                {
+                    switch (Rcp.Spec.specList[row].InspectionType)
+                    {
+                        case InspType.Normal:
+                        case InspType.MintoMax:
+                            SpecGrid[1, row].Style.BackColor = Color.White;
+                            SpecGrid[2, row].Style.BackColor = Color.White;
+                            break;
+                        case InspType.OKNG:
+                            SpecGrid[1, row].ReadOnly = true;
+                            SpecGrid[2, row].ReadOnly = true;
+                            break;
+                        case InspType.OnlyMin:
+                            SpecGrid[1, row].Style.BackColor = Color.White;
+                            SpecGrid[2, row].ReadOnly = true;
+                            break;
+                        case InspType.OnlyMax:
+                            SpecGrid[2, row].Style.BackColor = Color.White;
+                            SpecGrid[1, row].ReadOnly = true;
+                            break;
+
+
+                    }
+                    SpecGrid[0, row].ReadOnly = true;
+                }
+            }
+            else
+            {
+                SpecGrid.ReadOnly = true;
+                for (int row = 0; row < SpecGrid.Rows.Count; row++)
+                {
+                    SpecGrid[1, row].Style.BackColor = Color.LightGray;
+                    SpecGrid[2, row].Style.BackColor = Color.LightGray;
+                }
+            }
+        }
+        private void InitDataSpec()
+        {
+            Type dgvType = SpecGrid.GetType();
+            PropertyInfo pi = dgvType.GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
+            pi.SetValue(SpecGrid, true, null);
+
+            SpecGrid.ColumnCount = 3;
+            SpecGrid.Font = new Font("Calibri", 10, FontStyle.Bold);
+            for (int i = 0; i < SpecGrid.ColumnCount; i++) {
+                SpecGrid.Columns[i].SortMode = DataGridViewColumnSortMode.NotSortable;
+            }
+            SpecGrid.RowHeadersVisible = false;
+            SpecGrid.BackgroundColor = Color.LightGray;
+
+            SpecFileName.Text = Current.SpecName;
+            // Column
+       //     SpecGrid.Columns[0].Name = "Axis";
+            SpecGrid.Columns[0].Name = "Test Item";
+            SpecGrid.Columns[1].Name = "Min";
+            SpecGrid.Columns[2].Name = "Max";
+
+            DataGridViewCheckBoxColumn chkCol = new DataGridViewCheckBoxColumn();
+            chkCol.ValueType = typeof(bool);
+            chkCol.HeaderText = "On/Off";
+            SpecGrid.Columns.Add(chkCol);
+            for (int i = 0; i < 4; i++)
+                SpecGrid.Columns[i].DefaultCellStyle.Font = new Font("Calibri", 10, FontStyle.Bold);
+
+          //  SpecGrid.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            SpecGrid.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            SpecGrid.Columns[1].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            SpecGrid.Columns[2].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+            SpecGrid.Columns[3].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+
+         //   SpecGrid.Columns[0].Width = 80;
+            SpecGrid.Columns[0].Width = 200;
+            SpecGrid.Columns[1].Width = 100;
+            SpecGrid.Columns[2].Width = 100;
+            SpecGrid.Columns[3].Width = 50;
+
+            // Row 
+        
+            SpecGrid.Rows.Clear();
+
+            for (int i = 0; i < Spec.specList.Count; i++)
+            {
+                SpecGrid.Rows.Add(Spec.specList[i].DisplayName, Spec.specList[i].MinSpec, Spec.specList[i].MaxSpec, Spec.specList[i].OnOff);
+                //SpecGrid[0, i].Style.BackColor = Color.White;
+                SpecGrid[0, i].Style.BackColor = Color.White;
+
+            }
+
+
+            SpecGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            SpecGrid.ColumnHeadersHeight = 22;
+
+            for (int i = 0; i < Spec.specList.Count; i++)
+            {
+                SpecGrid.Rows[i].Height = 18;     // spec 높이조절A
+                SpecGrid.Rows[i].Resizable = DataGridViewTriState.False;
+                SpecGrid.Rows[i].DefaultCellStyle.Font = new Font("Calibri", 9, FontStyle.Bold);
+                SpecGrid[0, i].Style.Font = new Font("Calibri", 9, FontStyle.Bold);
+                SpecGrid[1, i].Style.Font = new Font("Calibri", 9, FontStyle.Bold);
+                SpecGrid[3, i].Style.Font = new Font("Calibri", 9, FontStyle.Italic);
+            }
+
+            for (int colum = 1; colum < 3; colum++)
+            {
+                for (int row = 0; row < SpecGrid.Rows.Count; row++)
+                {
+                    SpecGrid[colum, row].Style.BackColor = Color.LightGray;
+                    if (Convert.ToBoolean(SpecGrid[3, row].Value))
+                        SpecGrid[0, row].Style.BackColor = Color.White;
+                    else SpecGrid[0, row].Style.BackColor = Color.OrangeRed;
+                }
+            }
+            SpecGrid.ReadOnly = true;
+            IsEdit();
+        }
+        private void InitRetryGrid()
+        {
+            Type dgvType = RetryGrid.GetType();
+            PropertyInfo pi = dgvType.GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
+            pi.SetValue(RetryGrid, true, null);
+
+            RetryGrid.ColumnCount = 2;
+            RetryGrid.Font = new Font("Calibri", 9, FontStyle.Bold);
+            for (int i = 0; i < RetryGrid.ColumnCount; i++) {
+                RetryGrid.Columns[i].SortMode = DataGridViewColumnSortMode.NotSortable;
+            }
+            RetryGrid.RowHeadersVisible = false;
+            RetryGrid.BackgroundColor = Color.LightGray;
+
+            RetryGrid.Columns[0].Name = "Test Item";
+            RetryGrid.Columns[1].Name = "Count";
+
+            RetryGrid.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            RetryGrid.Columns[1].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+
+            RetryGrid.Columns[0].Width = 150;
+            RetryGrid.Columns[1].Width = 50;
+
+            // Row 
+            RetryGrid.Rows.Clear();
+
+            for (int i = 0; i < Rcp.RetryCnt.RetryOption.Count; i++)
+            {
+                RetryGrid.Rows.Add(Rcp.RetryCnt.RetryOption[i].InspName, Rcp.RetryCnt.RetryOption[i].Count);
+                RetryGrid[0, i].Style.BackColor = Color.White;
+            }
+
+            RetryGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            RetryGrid.ColumnHeadersHeight = 22;
+        }
+        public void UpdateUI()
+        {
+            Condition.ToDoList.Clear();
+            for (int i = 0; i < TodoBox.Items.Count; i++)
+            {
+                Condition.ToDoList.Add(TodoBox.Items[i].ToString());
+            }
+            PropertyDescriptorCollection props = TypeDescriptor.GetProperties(Condition);
+            for (int i = 0; i < ConditinGrid.RowCount; i++)
+            {
+                var found = props.Cast<PropertyDescriptor>().FirstOrDefault(prop =>
+                ((ConditionAttribute)prop.Attributes[typeof(ConditionAttribute)])?.DisplayName == ConditinGrid[1, i].Value.ToString() &&
+                ((ConditionAttribute)prop.Attributes[typeof(ConditionAttribute)])?.Category == ConditinGrid[0, i].Value.ToString());
+
+                TypeConverter convert = TypeDescriptor.GetConverter(found.PropertyType);
+                object convVal = convert.ConvertFromString(ConditinGrid[2, i].Value.ToString());
+                found.SetValue(Condition, convVal);
+
+            }
+            for (int i = 0; i < SpecGrid.RowCount; i++)
+            {
+                int index = Spec.specList.FindIndex(x => x.DisplayName == SpecGrid[0, i].Value.ToString());
+
+                if (index != -1)
+                {
+                    Spec.specList[index].MinSpec = Convert.ToDouble(SpecGrid[1, i].Value);
+                    Spec.specList[index].MaxSpec = Convert.ToDouble(SpecGrid[2, i].Value);
+                    Spec.specList[index].OnOff = Convert.ToBoolean(SpecGrid[3, i].Value);
+
+                }
+            }
+
+            STATIC.fVision.SetExposure(0, STATIC.Rcp.vsFile.Exposure);
+            STATIC.fVision.SetRawGainNGamma(STATIC.Rcp.vsFile.RawGain, STATIC.Rcp.vsFile.Gamma);
+            STATIC.fVision.SetExposure(0, STATIC.Rcp.vsFile.Exposure);
+            STATIC.fVision.SetRawGainNGamma(STATIC.Rcp.vsFile.RawGain, STATIC.Rcp.vsFile.Gamma);
+
+        }
+        public List<System.Windows.Forms.CheckBox> ListChk = new List<System.Windows.Forms.CheckBox>();
+        private void InitOption()
+        {
+            PropertyDescriptorCollection props = TypeDescriptor.GetProperties(Option);
+
+            int width = 0;
+            int hCal = 0;
+
+            for (int i = 0; i < props.Count; i++)
+            {
+                width =  200 * (i/13);
+                hCal = 30 * (i % 13);
+
+                string name = DataIO.GetCustomAttribute<OptionAttribute>(props[i])?.DisplayName;
+                string Title = name.Replace(" ","");
+                System.Windows.Forms.CheckBox Chk = new System.Windows.Forms.CheckBox
+                {
+                    Name = $"chk_{Title}",
+                    Text = name,
+                    Checked = Convert.ToBoolean(props[i].GetValue(Option)),
+                    Font = new Font("Calibri", 11, FontStyle.Bold),
+                    ForeColor = Color.DarkBlue,
+                    Location = new Point(300 + width, 0 + hCal),
+                    AutoSize = true,
+                };
+                ModelGroup.Controls.Add(Chk);
+                ListChk.Add(Chk);
+            }
+        }
+        private void InitTodoList()
+        {
+            TodoBox.Items.Clear();
+            for (int i = 0; i < Condition.ToDoList.Count; i++)
+                TodoBox.Items.Add(Condition.ToDoList[i]);
+        }
+        private void InitModel()
+        {
+            tbMcNum.Text = Model.MCNum;
+            TesterNo.Text = Model.TesterNo;
+
+            MCtypeList.Items.Clear();
+            for (int i = 0; i < Model.MCTypeList.Count; i++)
+                MCtypeList.Items.Add(Model.MCTypeList[i]);
+            MCtypeList.SelectedItem = Model.MCType;
+        }
+        private void InitScripPath()
+        {
+            AFPidSetPath.Text = Current.FWPath;
+            XPidSetPath.Text = Current.XPidPath;
+            YPidSetPath.Text = Current.YPidPath;
+            CodeScriptPath.Text = Current.CodeScriptPath;
+        }
+        private void ToOperator_Click(object sender, EventArgs e)
+        {
+            STATIC.State = (int)STATIC.STATE.Manage;
+        }
+
+        private void ToVision_Click(object sender, EventArgs e)
+        {
+            //STATIC.fVision.mLEDcurrent[0] = Condition.LedCurrentL;
+            //STATIC.fVision.mLEDcurrent[1] = Condition.LedCurrentR;
+            //STATIC.fVision.m_ChannelOn[0] = Process.m_ChannelOn[0];
+            //STATIC.fVision.m_ChannelOn[1] = Process.m_ChannelOn[1];
+            STATIC.State = (int)STATIC.STATE.Vision;
+        }
+
+        private void ToMotion_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void OpenCondition_Click(object sender, EventArgs e)
+        {
+            string result = STATIC.OpenFile(STATIC.RecipeDir, ".rcp");
+            if (result == null) return;
+            STATIC.Rcp.Condition = DataIO.DeserializeXMLFileToObject<Condition>(result);
+            Current.ConditionName = Path.GetFileName(result);
+            DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+            InitCondition();
+        }
+
+        private void SaveCondition_Click(object sender, EventArgs e)
+        {
+            string path = STATIC.RecipeDir + Current.ConditionName;
+            UpdateUI();
+            DataIO.SerializeToXMLFile(Condition, path);
+        }
+
+        private void SaveAsCondition_Click(object sender, EventArgs e)
+        {
+            string result = STATIC.OpenFile(STATIC.RecipeDir, ".rcp", true);
+            UpdateUI();
+            DataIO.SerializeToXMLFile(Condition, result);
+            Current.ConditionName = Path.GetFileName(result);
+            DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+            RecipeFileName.Text = Current.ConditionName;
+        }
+
+        private void OpenSpec_Click(object sender, EventArgs e)
+        {
+            string result = STATIC.OpenFile(STATIC.SpecDir, ".spc");
+            if (result == null) return;
+            Current.SpecName = Path.GetFileName(result);
+            Spec.InitSpecList();
+            if (File.Exists(STATIC.SpecDir + Current.SpecName))
+            {
+                Spec compare = new Spec();
+                compare = DataIO.DeserializeXMLFileToObject<Spec>(STATIC.SpecDir + Current.SpecName);
+                for (int i = 0; i < compare.specList.Count; i++)
+                {
+                    int index = Spec.specList.FindIndex(x => x.DisplayName == compare.specList[i].DisplayName);
+                    if (index != -1)
+                    {
+                        Spec.specList[index].MinSpec = compare.specList[i].MinSpec;
+                        Spec.specList[index].MaxSpec = compare.specList[i].MaxSpec;
+                        Spec.specList[index].OnOff = compare.specList[i].OnOff;
+                        Spec.specList[index].FailCnt = compare.specList[i].FailCnt;
+                        //Spec.specList[index].InspectionType = compare.specList[i].InspectionType;
+                    }
+                }
+            }
+
+            DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+            InitDataSpec();
+            Process.InitResultData();
+            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
+        }
+
+        private void SaveSpec_Click(object sender, EventArgs e)
+        {
+            UpdateUI();
+            DataIO.SerializeToXMLFile(Spec, STATIC.SpecDir + Current.SpecName);
+            Process.InitResultData();
+            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
+        }
+
+        private void SaveAsSpec_Click(object sender, EventArgs e)
+        {
+            string result = STATIC.OpenFile(STATIC.SpecDir, ".spc", true);
+            if (result == null) return;
+            UpdateUI();
+            DataIO.SerializeToXMLFile(Spec, result);
+            Current.SpecName = Path.GetFileName(result);
+            DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+            SpecFileName.Text = Current.SpecName;
+            Process.InitResultData();
+            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
+        }
+
+        private void ApplyTester_Click(object sender, EventArgs e)
+        {
+            PropertyDescriptorCollection properties = TypeDescriptor.GetProperties(Option);
+
+            for (int i = 0; i < properties.Count; i++)
+            {
+                var found = properties.Cast<PropertyDescriptor>().FirstOrDefault(prop => ((OptionAttribute)prop.Attributes[typeof(OptionAttribute)])?.DisplayName == ListChk[i].Text);
+                found.SetValue(Option, ListChk[i].Checked);
+            }
+            DataIO.SerializeToXMLFile(Option, STATIC.OptionPath);
+            //Model ==
+            Model.MCNum = tbMcNum.Text;
+            Model.TesterNo = TesterNo.Text;
+           
+          
+            if (MCtypeList.SelectedItem != null) Model.MCType = MCtypeList.SelectedItem.ToString();
+            Model.Save();
+
+            InitModel();
+            STATIC.Dln.SetSocketSensor(Option.SocketSensorUse);
+        }
+
+        private void RemoveItem_Click(object sender, EventArgs e)
+        {
+            if (TodoBox.SelectedItems == null) return;
+            for (int i = 0; i < TodoBox.SelectedItems.Count; i++)
+            {
+                string sName = TodoBox.SelectedItems[i].ToString();
+                foreach (var l in Process.ItemList)
+                    Condition.ToDoList.Remove(sName);
+
+            }
+            InitTodoList();
+        }
+
+        private void AddItem_Click(object sender, EventArgs e)
+        {
+            if (Actionbox.SelectedItems == null) return;
+            for (int i = 0; i < Actionbox.SelectedItems.Count; i++)
+            {
+                string target = Actionbox.SelectedItems[i].ToString();
+                foreach (var l in Process.ItemList)
+                    if (l.Name == target)
+                    {
+                        bool isExist = false;
+                        foreach (var t in Condition.ToDoList) if (t == target) isExist = true;
+                        if (!isExist) Condition.ToDoList.Add(l.Name);
+                    }
+            }
+
+            InitTodoList();
+        }
+
+        private void Move_Up_Click(object sender, EventArgs e)
+        {
+            MoveTodo(true);
+        }
+
+        private void Move_Down_Click(object sender, EventArgs e)
+        {
+            MoveTodo(false);
+        }
+
+        public void MoveTodo(bool dir) // true : up, false : down
+        {
+
+            if (dir)
+            {
+                if (TodoBox.SelectedIndex == -1 || TodoBox.SelectedIndex == 0) return;
+                object select, prev, tmp;
+                select = TodoBox.Items[TodoBox.SelectedIndex];
+                prev = TodoBox.Items[TodoBox.SelectedIndex - 1];
+                tmp = select;
+                select = prev;
+                prev = tmp;
+                TodoBox.Items[TodoBox.SelectedIndex] = select;
+                TodoBox.Items[TodoBox.SelectedIndex - 1] = prev;
+                TodoBox.SelectedIndex--;
+            }
+            else
+            {
+                if (TodoBox.SelectedIndex == -1 || TodoBox.SelectedIndex == TodoBox.Items.Count - 1) return;
+                object select, next, tmp;
+                select = TodoBox.Items[TodoBox.SelectedIndex];
+                next = TodoBox.Items[TodoBox.SelectedIndex + 1];
+                tmp = select;
+                select = next;
+                next = tmp;
+                TodoBox.Items[TodoBox.SelectedIndex] = select;
+                TodoBox.Items[TodoBox.SelectedIndex + 1] = next;
+                TodoBox.SelectedIndex++;
+            }
+
+        }
+
+    
+        private void SetAFPIDUpdate_Click(object sender, EventArgs e)
+        {
+            var param = new OpenDialogParams()
+            {
+                Title = "FW Setting Files",
+                InitialDirectory = Rcp.FWSet?.InitDir,
+                Filter = "",
+                resultFunction = new OpenDialogResultFunc_AF(this),
+            };
+            var Context = new OpenDialogContext();
+            Context.Open(param);
+        }
+
+        private void SetXPIDUpdate_Click(object sender, EventArgs e)
+        {
+            var param = new OpenDialogParams()
+            {
+                Title = "PID Setting Files",
+                InitialDirectory = Rcp.XPidSet?.InitDir,
+                Filter = "",
+                resultFunction = new OpenDialogResultFunc_X(this),
+            };
+            var Context = new OpenDialogContext();
+            Context.Open(param);
+        }
+
+        private void SetYPIDUpdate_Click(object sender, EventArgs e)
+        {
+            var param = new OpenDialogParams()
+            {
+                Title = "PID Setting Files",
+                InitialDirectory = Rcp.YPidSet?.InitDir,
+                Filter = "",
+                resultFunction = new OpenDialogResultFunc_Y(this),
+            };
+            var Context = new OpenDialogContext();
+            Context.Open(param);
+        }
+
+        private void SetCodeScript_Click(object sender, EventArgs e)
+        {
+            string result = STATIC.OpenFile(Rcp.CodeScript.InitDir, Rcp.CodeScript.Ext);
+            if (result == null) return;
+            Rcp.CodeScript.Read(result);
+            Current.CodeScriptPath = Rcp.CodeScript.CurrentName;
+            DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+            CodeScriptPath.Text = Current.CodeScriptPath;
+        }
+
+        private void Actionbox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ListBox lb = (ListBox)sender;
+            if (lb.SelectedItems == null || lb.SelectedItems.Count == 0) return;
+            Color c = Color.YellowGreen;
+            string item = lb.SelectedItem.ToString();
+
+            int effRowNum = 0;
+            bool bColorChange = true;
+            PropertyDescriptorCollection props = TypeDescriptor.GetProperties(Condition);
+            for (int i = 0; i < props.Count; i++)
+            {
+                string Category = DataIO.GetCustomAttribute<ConditionAttribute>(props[i]).Category;
+                string Name = DataIO.GetCustomAttribute<ConditionAttribute>(props[i]).DisplayName;
+                string Unit = DataIO.GetCustomAttribute<ConditionAttribute>(props[i]).Unit;
+
+                if (Category != "ToDoList")
+                {
+                    if (i != 0)
+                    {
+                        string beforeCate = DataIO.GetCustomAttribute<ConditionAttribute>(props[i - 1])?.Category;
+                        if (beforeCate != Category) bColorChange = !bColorChange;
+                        if (bColorChange)
+                            ConditinGrid[1, effRowNum].Style.BackColor = Color.Lavender;
+                        else
+                            ConditinGrid[1, effRowNum].Style.BackColor = Color.White;
+                    }
+                    effRowNum++;
+
+                }
+
+            }
+            for (int i = 0; i < effRowNum; i++)
+            {
+                var foundProperty = props.Cast<PropertyDescriptor>().FirstOrDefault(prop =>
+                ((ConditionAttribute)prop.Attributes[typeof(ConditionAttribute)])?.DisplayName == ConditinGrid[1, i].Value.ToString() &&
+                 ((ConditionAttribute)prop.Attributes[typeof(ConditionAttribute)])?.Category == ConditinGrid[0, i].Value.ToString());
+
+                var attri = DataIO.GetCustomAttribute<ConditionAttribute>(foundProperty);
+                if (attri != null)
+                {
+                    if (attri.ToDo1 == item || attri.ToDo2 == item)
+                        ConditinGrid[1, i].Style.BackColor = c;
+                }
+            }
+
+        }
+
+
+
+
+
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            //var folder = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, @"..\\Training"));
+            //string sFilePath = folder;
+            string sFilePath = m__G.m_RootDirectory + "\\DoNotTouch\\Training";
+            if (!Directory.Exists(sFilePath))
+                Directory.CreateDirectory(sFilePath);
+
+            List<string> lPreparedModelFile = new List<string>();
+
+            OpenFileDialog openFile = new OpenFileDialog();
+            openFile.DefaultExt = "xml";
+            openFile.InitialDirectory = sFilePath;
+            openFile.Multiselect = true;
+            openFile.Filter = "XML(*.xml)|*.xml";
+            if (openFile.ShowDialog() == DialogResult.OK)
+            {
+                lbxModelFiles.Items.Clear();
+                StreamWriter wr = new StreamWriter(m__G.m_RootDirectory + "\\DoNotTouch\\" + mFile4ModelFileList);
+                foreach (string filename in openFile.FileNames)
+                {
+                    lPreparedModelFile.Add(filename);
+                    lbxModelFiles.Items.Add(filename);
+                    wr.WriteLine(filename);
+                }
+                wr.Close();
+                STATIC.fVision.SetModelFileList(lPreparedModelFile.ToArray());
+                STATIC.fVision.TransferModelFileList();
+            }
+            else
+                return;
+        }
+
+        private void lbxModelFiles_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (m__G == null)
+                return;
+            if (m__G.oCam[0] == null)
+                return;
+            if (m__G.oCam[0].mFAL == null)
+                return;
+            if (lbxModelFiles.SelectedItem == null)
+                return;
+
+            if (!m__G.mFAL.mFAutoLearnLoaded)
+            {
+                m__G.mFAL.Show();
+                m__G.mFAL.WindowState = System.Windows.Forms.FormWindowState.Maximized;
+                //mFAL.Size = new Size(1920, 1045);
+                m__G.mFAL.Location = new Point(0, 0);
+                m__G.mFAL.Hide();
+            }
+
+            if (!bLoadLastModelFile)
+            {
+                string sFile = lbxModelFiles.SelectedItem.ToString();
+                int lModelScale = m__G.oCam[0].mFAL.ExternalLoadFMIFile(sFile);
+                if (m__G != null)
+                    if (m__G.oCam[0] != null)
+                        m__G.oCam[0].ResetModelScale(1.0 / lModelScale);
+
+                lblDefaultModel.Text = sFile;
+            }
+        }
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct sSaveResult
+        {
+            [MarshalAs(UnmanagedType.I8)]
+            public Int64 sTime;             //  sTime = DateTime.Now.ToBinary(), When reading, DateTime now = DateTime.FromBinary(sTime);
+            [MarshalAs(UnmanagedType.I4)]
+            public int frameCount;
+            [MarshalAs(UnmanagedType.R8)]
+            public double fps;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledLeft;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledRight;
+            [MarshalAs(UnmanagedType.R8)]
+            public double testTime;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] X;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] Y;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] Z;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] TX;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] TY;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10000)]
+            public double[] TZ;
+        }
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct sSaveResult5
+        {
+            [MarshalAs(UnmanagedType.I8)]
+            public Int64 sTime;             //  sTime = DateTime.Now.ToBinary(), When reading, DateTime now = DateTime.FromBinary(sTime);
+            [MarshalAs(UnmanagedType.I4)]
+            public int frameCount;
+            [MarshalAs(UnmanagedType.R8)]
+            public double fps;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledLeft;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledRight;
+            [MarshalAs(UnmanagedType.R8)]
+            public double testTime;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] X;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] Y;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] Z;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] TX;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] TY;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5000)]
+            public double[] TZ;
+        }
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct sSaveResult3
+        {
+            [MarshalAs(UnmanagedType.I8)]
+            public Int64 sTime;             //  sTime = DateTime.Now.ToBinary(), When reading, DateTime now = DateTime.FromBinary(sTime);
+            [MarshalAs(UnmanagedType.I4)]
+            public int frameCount;
+            [MarshalAs(UnmanagedType.R8)]
+            public double fps;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledLeft;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledRight;
+            [MarshalAs(UnmanagedType.R8)]
+            public double testTime;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] X;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] Y;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] Z;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] TX;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] TY;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3000)]
+            public double[] TZ;
+        }
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct sSaveResult1
+        {
+            [MarshalAs(UnmanagedType.I8)]
+            public Int64 sTime;             //  sTime = DateTime.Now.ToBinary(), When reading, DateTime now = DateTime.FromBinary(sTime);
+            [MarshalAs(UnmanagedType.I4)]
+            public int frameCount;
+            [MarshalAs(UnmanagedType.R8)]
+            public double fps;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledLeft;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledRight;
+            [MarshalAs(UnmanagedType.R8)]
+            public double testTime;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] X;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] Y;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] Z;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] TX;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] TY;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1000)]
+            public double[] TZ;
+        }
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct sSaveResult0
+        {
+            [MarshalAs(UnmanagedType.I8)]
+            public Int64 sTime;             //  sTime = DateTime.Now.ToBinary(), When reading, DateTime now = DateTime.FromBinary(sTime);
+            [MarshalAs(UnmanagedType.I4)]
+            public int frameCount;
+            [MarshalAs(UnmanagedType.R8)]
+            public double fps;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledLeft;
+            [MarshalAs(UnmanagedType.R8)]
+            public double ledRight;
+            [MarshalAs(UnmanagedType.R8)]
+            public double testTime;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] X;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] Y;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] Z;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] TX;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] TY;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
+            public double[] TZ;
+        }
+        [Serializable]
+        public class sSaveResultBin
+        {
+            public Int64 sTime;
+            public int frameCount;
+            public double fps;
+            public double ledLeft;
+            public double ledRight;
+            public double testTime;
+            public double[] X;
+            public double[] Y;
+            public double[] Z;
+            public double[] TX;
+            public double[] TY;
+            public double[] TZ;
+        }
+        public class sSaveResultPos
+        {
+            public Int64 sTime;
+            public int frameCount;
+            public double fps;
+            public double ledLeft;
+            public double ledRight;
+            public double testTime;
+            public double[] X1 = new double[5000];
+            public double[] Y1 = new double[5000];
+            public double[] X2 = new double[5000];
+            public double[] Y2 = new double[5000];
+            public double[] X3 = new double[5000];
+            public double[] Y3 = new double[5000];
+            public double[] X4 = new double[5000];
+            public double[] Y4 = new double[5000];
+            public double[] X5 = new double[5000];
+            public double[] Y5 = new double[5000];
+        }
+        public static sSaveResultPos ReadsSaveResultPos(string FileName)
+        {
+            System.Xml.Serialization.XmlSerializer reader =
+                new System.Xml.Serialization.XmlSerializer(typeof(sSaveResultPos));
+
+            System.IO.StreamReader file = new System.IO.StreamReader(FileName);
+            sSaveResultPos res = (sSaveResultPos)reader.Deserialize(file);
+            file.Close();
+
+            return res;
+        }
+
+        public static sSaveResult ReadsSaveResult(string FileName)
+        {
+            sSaveResult sRes = new sSaveResult();
+            int size = Marshal.SizeOf(typeof(sSaveResult));
+
+            Stream iStream = File.OpenRead(FileName);
+            BinaryReader reader = new BinaryReader(iStream);
+
+            IntPtr ptr = Marshal.AllocHGlobal(size);
+            byte[] buffer = reader.ReadBytes(size);
+            Marshal.Copy(buffer, 0, ptr, size);
+            sRes = (sSaveResult)Marshal.PtrToStructure(ptr, typeof(sSaveResult));
+            reader.Close();
+            Marshal.FreeHGlobal(ptr);
+
+            return sRes;
+        }
+        public static sSaveResult5 ReadsSaveResult5(string FileName)
+        {
+            sSaveResult5 sRes = new sSaveResult5();
+            int size = Marshal.SizeOf(typeof(sSaveResult5));
+
+            Stream iStream = File.OpenRead(FileName);
+            BinaryReader reader = new BinaryReader(iStream);
+
+            IntPtr ptr = Marshal.AllocHGlobal(size);
+            byte[] buffer = reader.ReadBytes(size);
+            Marshal.Copy(buffer, 0, ptr, size);
+            sRes = (sSaveResult5)Marshal.PtrToStructure(ptr, typeof(sSaveResult5));
+            reader.Close();
+            Marshal.FreeHGlobal(ptr);
+
+            return sRes;
+        }
+        public static sSaveResult3 ReadsSaveResult3(string FileName)
+        {
+            sSaveResult3 sRes = new sSaveResult3();
+            int size = Marshal.SizeOf(typeof(sSaveResult3));
+
+            Stream iStream = File.OpenRead(FileName);
+            BinaryReader reader = new BinaryReader(iStream);
+
+            IntPtr ptr = Marshal.AllocHGlobal(size);
+            byte[] buffer = reader.ReadBytes(size);
+            Marshal.Copy(buffer, 0, ptr, size);
+            sRes = (sSaveResult3)Marshal.PtrToStructure(ptr, typeof(sSaveResult3));
+            reader.Close();
+            Marshal.FreeHGlobal(ptr);
+
+            return sRes;
+        }
+
+        public static object ReadsSaveResultBin(string FileName)
+        {
+            Stream rs = new FileStream(FileName, FileMode.Open);
+            BinaryFormatter bf = new BinaryFormatter();
+
+            object sRes = bf.Deserialize(rs);
+            rs.Close();
+
+            return sRes;
+        }
+
+        public string ReadResultPos(string sFileName)
+        {
+            //Check if result file is readable
+            string filename = Path.GetFileName(sFileName);
+            string[] strframeCount = filename.Split('_');
+
+            int framCnt = int.Parse(strframeCount[0]);
+            string lstr = "";
+            sSaveResultPos result = ReadsSaveResultPos(sFileName);
+            int len = result.frameCount;
+            DateTimeOffset ltime = DateTimeOffset.FromUnixTimeSeconds(result.sTime);
+            DateTime TimeTested = ltime.DateTime;
+            if (sFileName.Contains("_0_"))
+                lstr = TimeTested.ToLocalTime().ToString() + "\t" + "X1 smt" + "\t" + "Y1 smt" + "\t" + "X2 smt" + "\t" + "Y2 smt" + "\t" + "X3 smt" + "\t" + "Y3 smt" + "\t" + "X4 smt" + "\t" + "Y4 smt" + "\t" + "X5 smt" + "\t" + "Y5 smt" + "\r\n";
+            else
+                lstr = TimeTested.ToLocalTime().ToString() + "\t" + "X1 std" + "\t" + "Y1 std" + "\t" + "X2 std" + "\t" + "Y2 std" + "\t" + "X3 std" + "\t" + "Y3 std" + "\t" + "X4 std" + "\t" + "Y4 std" + "\t" + "X5 std" + "\t" + "Y5 std" + "\r\n";
+
+            for (int i = 0; i < len; i++)
+            {
+                lstr += i.ToString() + "\t" + result.X1[i].ToString("F3") + "\t" + result.Y1[i].ToString("F3")
+                                     + "\t" + result.X2[i].ToString("F3") + "\t" + result.Y2[i].ToString("F3")
+                                     + "\t" + result.X3[i].ToString("F3") + "\t" + result.Y3[i].ToString("F3")
+                                     + "\t" + result.X4[i].ToString("F3") + "\t" + result.Y4[i].ToString("F3")
+                                     + "\t" + result.X5[i].ToString("F3") + "\t" + result.Y5[i].ToString("F3") + "\r\n";
+
+
+            }
+            return lstr;
+        }
+        public string WriteResultBin(int modelIndex = 0)
+        {
+            string sLotName = STATIC.fManage.GetLotName();
+            m__G.mNowLotName = sLotName;
+
+            string sLotDir = STATIC.fManage.CheckResultFolder();
+            if (sLotName != "")
+                sLotDir = sLotDir + sLotName;
+
+            if (!Directory.Exists(sLotDir))
+                Directory.CreateDirectory(sLotDir);
+
+            DateTime dtNow = DateTime.Now;   // 현재 날짜, 시간 얻기
+            int framCnt = STATIC.fVision.GetTriggerGrabbedFrame();
+
+            if (framCnt > m__G.oCam[0].mTargetTriggerCount)
+                framCnt = m__G.oCam[0].mTargetTriggerCount;
+
+            string filename = framCnt.ToString() + "_" + modelIndex.ToString() + "_" + dtNow.ToString("yyMMddHHmmss.fff") + ".dat";
+            string sFilePath = sLotDir + filename;
+
+            double umscale = 5.5 / Global.LensMag;                           //  rad to min
+            double minscale = 180 / Math.PI * 60;                           //  rad to min
+            double preZ = 0;
+            int i = 0;
+
+            if (framCnt > 5000)
+            {
+                sSaveResult sResult = new sSaveResult();
+
+                sResult.X = new double[10000];
+                sResult.Y = new double[10000];
+                sResult.Z = new double[10000];
+                sResult.TX = new double[10000];
+                sResult.TY = new double[10000];
+                sResult.TZ = new double[10000];
+
+                DateTime startDateTime = m__G.oCam[0].GetLastTriggerTime();
+                DateTimeOffset datetimeOffset = new DateTimeOffset(startDateTime);
+                long unixTime = datetimeOffset.ToUnixTimeSeconds();
+                //sResult.sTime = startDateTime.ToBinary();
+                sResult.sTime = unixTime;
+                sResult.frameCount = framCnt;
+                sResult.fps = STATIC.fVision.GetTriggerGrabbedFPS();
+                sResult.ledLeft = STATIC.fVision.mLEDcurrent[1];
+                sResult.ledRight = STATIC.fVision.mLEDcurrent[0];
+                sResult.testTime = STATIC.fVision.GetHowLongItTook();
+
+                //////  임시  230924
+                ////double tx0 = m__G.oCam[0].mC_pTX[0];
+                ////double ty0 = m__G.oCam[0].mC_pTY[0];
+                ////double tz0 = m__G.oCam[0].mC_pTZ[0];
+
+
+
+
+
+                for (i = 0; i < 5; i++)
+                {
+                    sResult.X[0] += m__G.oCam[0].mC_pX[i] * umscale / 5;  //  um
+                    sResult.Y[0] += m__G.oCam[0].mC_pY[i] * umscale / 5;  //  um
+                    sResult.Z[0] += m__G.oCam[0].mC_pZ[i] * umscale / 5;  //  um
+                    //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                    //sResult.Z[i] += m__G.oCam[0].mC_pZ[i] * umscale / 5;
+                    sResult.TX[0] += m__G.oCam[0].mC_pTX[i] * minscale / 5; //  min
+                    sResult.TY[0] += m__G.oCam[0].mC_pTY[i] * minscale / 5; //  min
+                    sResult.TZ[0] += m__G.oCam[0].mC_pTZ[i] * minscale / 5; //  min
+                }
+
+                for (i = 1; i < framCnt; i++)
+                {
+                    sResult.X[i] = m__G.oCam[0].mC_pX[i] * umscale;  //  um
+                    sResult.Y[i] = m__G.oCam[0].mC_pY[i] * umscale;  //  um
+                    sResult.Z[i] = m__G.oCam[0].mC_pZ[i] * umscale;  //  um
+                    //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                    //sResult.Z[i] = m__G.fVision.ApplyZLUT(preZ);
+                    sResult.TX[i] = m__G.oCam[0].mC_pTX[i] * minscale; //  min
+                    sResult.TY[i] = m__G.oCam[0].mC_pTY[i] * minscale; //  min
+                    sResult.TZ[i] = m__G.oCam[0].mC_pTZ[i] * minscale; //  min
+                }
+
+                int size = 0;
+                try
+                {
+                    size = Marshal.SizeOf(sResult);
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show(e.ToString());
+                }
+                IntPtr wPtr = Marshal.AllocHGlobal(size);
+                Marshal.StructureToPtr(sResult, wPtr, true);
+                //byte[] sDataBuff = new byte[size];
+                //Marshal.Copy(wPtr, sDataBuff, 0, size);
+                //wr.Write(sDataBuff);
+                STATIC.fManage.sDataBuff = new byte[size];
+                Marshal.Copy(wPtr, STATIC.fManage.sDataBuff, 0, size);
+
+                if (m__G.m_bSaveRawData)
+                {
+                    BinaryWriter wr = new BinaryWriter(File.OpenWrite(sFilePath));
+                    wr.Write(STATIC.fManage.sDataBuff);
+                    wr.Flush();
+                    wr.Close();
+                }
+
+                Marshal.FreeHGlobal(wPtr);
+            }
+            else if (framCnt > 3000)
+            {
+                sSaveResult5 sResult = new sSaveResult5();
+
+                sResult.X = new double[5000];
+                sResult.Y = new double[5000];
+                sResult.Z = new double[5000];
+                sResult.TX = new double[5000];
+                sResult.TY = new double[5000];
+                sResult.TZ = new double[5000];
+
+                DateTime startDateTime = m__G.oCam[0].GetLastTriggerTime();
+                DateTimeOffset datetimeOffset = new DateTimeOffset(startDateTime);
+                long unixTime = datetimeOffset.ToUnixTimeSeconds();
+                //sResult.sTime = startDateTime.ToBinary();
+                sResult.sTime = unixTime;
+                sResult.frameCount = framCnt;
+                sResult.fps = STATIC.fVision.GetTriggerGrabbedFPS();
+                sResult.ledLeft = STATIC.fVision.mLEDcurrent[1];
+                sResult.ledRight = STATIC.fVision.mLEDcurrent[0];
+                sResult.testTime = STATIC.fVision.GetHowLongItTook();
+
+                for (i = 0; i < 5; i++)
+                {
+                    sResult.X[0] += m__G.oCam[0].mC_pX[i] * umscale / 5;  //  um
+                    sResult.Y[0] += m__G.oCam[0].mC_pY[i] * umscale / 5;  //  um
+                    sResult.Z[0] += m__G.oCam[0].mC_pZ[i] * umscale / 5;  //  um
+                    //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                    //sResult.Z[i] += m__G.oCam[0].mC_pZ[i] * umscale / 5;
+                    sResult.TX[0] += m__G.oCam[0].mC_pTX[i] * minscale / 5; //  min
+                    sResult.TY[0] += m__G.oCam[0].mC_pTY[i] * minscale / 5; //  min
+                    sResult.TZ[0] += m__G.oCam[0].mC_pTZ[i] * minscale / 5; //  min
+                }
+
+                for (i = 1; i < framCnt; i++)
+                {
+                    sResult.X[i] = m__G.oCam[0].mC_pX[i] * umscale;  //  um
+                    sResult.Y[i] = m__G.oCam[0].mC_pY[i] * umscale;  //  um
+                    sResult.Z[i] = m__G.oCam[0].mC_pZ[i] * umscale;  //  um     //  zlut 적용 검토
+                    //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                    //sResult.Z[i] = m__G.fVision.ApplyZLUT(preZ);
+                    sResult.TX[i] = m__G.oCam[0].mC_pTX[i] * minscale; //  min
+                    sResult.TY[i] = m__G.oCam[0].mC_pTY[i] * minscale; //  min
+                    sResult.TZ[i] = m__G.oCam[0].mC_pTZ[i] * minscale; //  min
+                }
+
+                int size = 0;
+                try
+                {
+                    size = Marshal.SizeOf(sResult);
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show(e.ToString());
+                }
+                IntPtr wPtr = Marshal.AllocHGlobal(size);
+                Marshal.StructureToPtr(sResult, wPtr, true);
+                //byte[] sDataBuff = new byte[size];
+                //Marshal.Copy(wPtr, sDataBuff, 0, size);
+                //wr.Write(sDataBuff);
+                STATIC.fManage.sDataBuff = new byte[size];
+                Marshal.Copy(wPtr, STATIC.fManage.sDataBuff, 0, size);
+
+                if (m__G.m_bSaveRawData)
+                {
+                    BinaryWriter wr = new BinaryWriter(File.OpenWrite(sFilePath));
+                    wr.Write(STATIC.fManage.sDataBuff);
+                    wr.Flush();
+                    wr.Close();
+                }
+
+                Marshal.FreeHGlobal(wPtr);
+            }
+            else
+            {
+                sSaveResult3 sResult = new sSaveResult3();
+
+                sResult.X = new double[3000];
+                sResult.Y = new double[3000];
+                sResult.Z = new double[3000];
+                sResult.TX = new double[3000];
+                sResult.TY = new double[3000];
+                sResult.TZ = new double[3000];
+
+                DateTime startDateTime = m__G.oCam[0].GetLastTriggerTime();
+                DateTimeOffset datetimeOffset = new DateTimeOffset(startDateTime);
+                long unixTime = datetimeOffset.ToUnixTimeSeconds();
+                //sResult.sTime = startDateTime.ToBinary();
+                sResult.sTime = unixTime;
+                sResult.frameCount = framCnt;
+                sResult.fps = STATIC.fVision.GetTriggerGrabbedFPS();
+                sResult.ledLeft = STATIC.fVision.mLEDcurrent[1];
+                sResult.ledRight = STATIC.fVision.mLEDcurrent[0];
+                sResult.testTime = STATIC.fVision.GetHowLongItTook();
+
+                if (framCnt > 1000)
+                {
+                    for (i = 0; i < 5; i++)
+                    {
+                        sResult.X[0] += m__G.oCam[0].mC_pX[i] * umscale / 5;  //  um
+                        sResult.Y[0] += m__G.oCam[0].mC_pY[i] * umscale / 5;  //  um
+                        sResult.Z[0] += m__G.oCam[0].mC_pZ[i] * umscale / 5;  //  um
+                                                                              //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                                                                              //sResult.Z[i] += m__G.oCam[0].mC_pZ[i] * umscale / 5;
+                        sResult.TX[0] += m__G.oCam[0].mC_pTX[i] * minscale / 5; //  min
+                        sResult.TY[0] += m__G.oCam[0].mC_pTY[i] * minscale / 5; //  min
+                        sResult.TZ[0] += m__G.oCam[0].mC_pTZ[i] * minscale / 5; //  min
+                    }
+
+                    for (i = 1; i < framCnt; i++)
+                    {
+                        sResult.X[i] = m__G.oCam[0].mC_pX[i] * umscale;  //  um
+                        sResult.Y[i] = m__G.oCam[0].mC_pY[i] * umscale;  //  um
+                        sResult.Z[i] = m__G.oCam[0].mC_pZ[i] * umscale;  //  um     //  zlut 적용 검토
+                                                                         //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                                                                         //sResult.Z[i] = m__G.fVision.ApplyZLUT(preZ);
+                        sResult.TX[i] = m__G.oCam[0].mC_pTX[i] * minscale; //  min
+                        sResult.TY[i] = m__G.oCam[0].mC_pTY[i] * minscale; //  min
+                        sResult.TZ[i] = m__G.oCam[0].mC_pTZ[i] * minscale; //  min
+                    }
+                }
+                else
+                {
+                    for (i = 0; i < framCnt; i++)
+                    {
+                        sResult.X[i] = m__G.oCam[0].mC_pX[i] * umscale;  //  um
+                        sResult.Y[i] = m__G.oCam[0].mC_pY[i] * umscale;  //  um
+                        sResult.Z[i] = m__G.oCam[0].mC_pZ[i] * umscale;  //  um     //  zlut 적용 검토
+                                                                         //preZ = m__G.oCam[0].mC_pZ[i] * umscale;
+                                                                         //sResult.Z[i] = m__G.fVision.ApplyZLUT(preZ);
+                        sResult.TX[i] = m__G.oCam[0].mC_pTX[i] * minscale; //  min
+                        sResult.TY[i] = m__G.oCam[0].mC_pTY[i] * minscale; //  min
+                        sResult.TZ[i] = m__G.oCam[0].mC_pTZ[i] * minscale; //  min
+                    }
+                }
+
+
+                int size = 0;
+                try
+                {
+                    size = Marshal.SizeOf(sResult);
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show(e.ToString());
+                }
+                IntPtr wPtr = Marshal.AllocHGlobal(size);
+                Marshal.StructureToPtr(sResult, wPtr, true);
+                //byte[] sDataBuff = new byte[size];
+                //Marshal.Copy(wPtr, sDataBuff, 0, size);
+                //wr.Write(sDataBuff);
+                STATIC.fManage.sDataBuff = new byte[size];
+                Marshal.Copy(wPtr, STATIC.fManage.sDataBuff, 0, size);
+
+                if (m__G.m_bSaveRawData)
+                {
+                    BinaryWriter wr = new BinaryWriter(File.OpenWrite(sFilePath));
+                    wr.Write(STATIC.fManage.sDataBuff);
+                    wr.Flush();
+                    wr.Close();
+                }
+
+                Marshal.FreeHGlobal(wPtr);
+            }
+
+            //  Verify Read process
+            //Thread.Sleep(100);
+            //sSaveResult3 sRes = ReadsSaveResult3(sFilePath);
+            //DateTime now = DateTime.FromBinary(sRes.sTime);
+
+            return sFilePath;
+        }
+        public string ReadResultBin(string sFileName)
+        {
+            //Check if result file is readable
+            string filename = Path.GetFileName(sFileName);
+            string[] strframeCount = filename.Split('_');
+
+            int framCnt = int.Parse(strframeCount[0]);
+            string lstr = "";
+            string strHead = "";
+            if (sFileName.Contains("_0_"))
+                strHead = "\tX SMT\tY SMT\tZ SMT\tTX SMT\tTY SMT\tTZ SMT";
+            else
+                strHead = "\tX std\tY std\tZ std\tTX std\tTY std\tTZ std";
+
+            if (framCnt > 5000)
+            {
+                sSaveResult result = ReadsSaveResult(sFileName);
+                int len = result.frameCount;
+                DateTimeOffset ltime = DateTimeOffset.FromUnixTimeSeconds(result.sTime);
+                DateTime TimeTested = ltime.DateTime;
+                lstr = TimeTested.ToLocalTime().ToString() + strHead + "\r\n";
+                for (int i = 0; i < len; i++)
+                {
+                    lstr += i.ToString() + "\t" + result.X[i].ToString("F2") + "\t" + result.Y[i].ToString("F2") + "\t" + result.Z[i].ToString("F2") + "\t" + result.TX[i].ToString("F2") + "\t" + result.TY[i].ToString("F2") + "\t" + result.TZ[i].ToString("F2") + "\r\n";
+                }
+            }
+            else if (framCnt > 3000)
+            {
+                sSaveResult5 result5 = ReadsSaveResult5(sFileName);
+                int len = result5.frameCount;
+                DateTimeOffset ltime = DateTimeOffset.FromUnixTimeSeconds(result5.sTime);
+                DateTime TimeTested = ltime.DateTime;
+                lstr = TimeTested.ToLocalTime().ToString() + strHead + "\r\n";
+                for (int i = 0; i < len; i++)
+                {
+                    lstr += i.ToString() + "\t" + result5.X[i].ToString("F2") + "\t" + result5.Y[i].ToString("F2") + "\t" + result5.Z[i].ToString("F2") + "\t" + result5.TX[i].ToString("F2") + "\t" + result5.TY[i].ToString("F2") + "\t" + result5.TZ[i].ToString("F2") + "\r\n";
+                }
+            }
+            else
+            {
+                sSaveResult3 result3 = F_Main.ReadsSaveResult3(sFileName);
+                int len = result3.frameCount;
+                DateTimeOffset ltime = DateTimeOffset.FromUnixTimeSeconds(result3.sTime);
+                DateTime TimeTested = ltime.DateTime;
+                lstr = TimeTested.ToLocalTime().ToString() + strHead + "\r\n";
+                for (int i = 0; i < len; i++)
+                {
+                    lstr += i.ToString() + "\t" + result3.X[i].ToString("F2") + "\t" + result3.Y[i].ToString("F2") + "\t" + result3.Z[i].ToString("F2") + "\t" + result3.TX[i].ToString("F2") + "\t" + result3.TY[i].ToString("F2") + "\t" + result3.TZ[i].ToString("F2") + "\r\n";
+                }
+            }
+            return lstr;
+        }
+
+        private void SpecGrid_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == 3)
+            {
+                DataGridViewCell cell = SpecGrid.Rows[e.RowIndex].Cells[e.ColumnIndex];
+                if (Convert.ToBoolean(cell.Value))
+                    SpecGrid[0, e.RowIndex].Style.BackColor = Color.White;
+                else SpecGrid[0, e.RowIndex].Style.BackColor = Color.OrangeRed;
+            }
+        }
+
+        private void SpecGrid_CurrentCellDirtyStateChanged(object sender, EventArgs e)
+        {
+            if (SpecGrid.IsCurrentCellDirty)
+                SpecGrid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            for (int i = 0; i < RetryGrid.RowCount; i++)
+            {
+                int index = Rcp.RetryCnt.RetryOption.FindIndex(x => x.InspName == RetryGrid[0, i].Value.ToString());
+                if(index != -1)
+                    Rcp.RetryCnt.RetryOption[index].Count = Convert.ToInt32(RetryGrid[1, i].Value);
+            }
+            DataIO.SerializeToXMLFile(Rcp.RetryCnt, STATIC.RetryCountDir);
+        }
+
+        private void TesterNo_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!(char.IsDigit(e.KeyChar) || e.KeyChar == Convert.ToChar(Keys.Back)))
+            {
+                e.Handled = true;
+            }
+      
+        }
+
+        public void DiaLogResultFileName(string fileFullName, int index = 0)
+        {
+            if (index == 0)
+            {
+                Rcp.FWSet.Read(fileFullName);
+                Current.FWPath = Rcp.FWSet.FilePath;
+                DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+                AFPidSetPath.Text = Current.FWPath;
+            }
+            else if (index == 1)
+            {
+                Rcp.XPidSet.Read(fileFullName);
+                Current.XPidPath = Rcp.XPidSet.FilePath;
+                DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+                XPidSetPath.Text = Current.XPidPath;
+            }
+            else if (index == 2)
+            {
+                Rcp.YPidSet.Read(fileFullName);
+                Current.YPidPath = Rcp.YPidSet.FilePath;
+                DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
+                YPidSetPath.Text = Current.YPidPath;
+            }
+        }
+
+        private void Edit_Click(object sender, EventArgs e)
+        {
+            System.Windows.Forms.CheckBox checkBox = sender as System.Windows.Forms.CheckBox; 
+            // 현재 상태
+            bool currentChecked = checkBox.Checked;
+
+            // 체크하려는 경우에만 비밀번호 확인
+            if (!currentChecked)
+            {
+                //using (F_Password2 fpw = new F_Password2())
+                //{
+                //    DialogResult dr = fpw.ShowDialog();
+
+                //    if (dr == DialogResult.OK)
+                //    {
+                        checkBox.Checked = true;
+                        IsEdit();
+                //    }
+                //    else
+                //    {
+                //        checkBox.Checked = false;
+                //    }
+                //}
+            }
+            else
+            {
+                // 체크 해제는 그냥 허용할지, 이것도 비밀번호 걸지 선택
+                checkBox.Checked = false;
+                IsEdit();
+            }
+        }
+    }
+}
