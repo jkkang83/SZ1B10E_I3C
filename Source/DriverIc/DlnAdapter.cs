@@ -49,7 +49,10 @@ namespace FZ4P
 
         public double GetCurrent(int ch, int mode) => _dln.GetCurrent(ch, mode);
         public void SetLEDpower(int id, int value) => _dln.SetLEDpower(id, value);
-
+        public bool ReInitTarget(int ch)
+        {
+            return true;
+        }
         public byte[] RunInternalSequence(string cmd, byte[] payload = null)
         {
             return new byte[0]; // 내부 시퀀스는 DLN에서 직접 구현하지 않으므로 빈 배열 반환

@@ -381,7 +381,10 @@ namespace FZ4P
         private Thread _swWatcher;
         private bool _lastSwState = false;
         private bool _isSwitchActive = false; // 기존 IsSwitch 역할
-
+        public bool ReInitTarget(int ch)
+        {
+            return true;
+        }
         // Init() 성공 시 또는 생성자에서 호출
         public void StartSwWatcher()
         {

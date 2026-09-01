@@ -759,6 +759,7 @@ namespace FZ4P
                 Dln.CoverDn();
 
                 Thread.Sleep(500);
+
             }
             catch
             { }
@@ -824,8 +825,8 @@ namespace FZ4P
         }   
         public void Process_Start(int port,bool barcodeCheckState)
         {
-            if(!IsVirtual)while(isI2cMonitoring) Thread.Sleep(10);
-            bool isI2cFail = false;
+            if (!IsVirtual)while(isI2cMonitoring) Thread.Sleep(10);
+
             STATIC.SaveLogData = string.Empty;
 
             int index = Rcp.RetryCnt.RetryOption.FindIndex(x => x.InspName == "All");
@@ -841,6 +842,7 @@ namespace FZ4P
                     ShowDataResultsInit(0);
                     ClearChart();
                     int ch = port * 2;
+
                     int count = Condition.ToDoList.Count;
                     if (count == 0)
                     {
@@ -853,15 +855,10 @@ namespace FZ4P
                         m_ChannelOn[k] = true;
                         errMsg[k] = "";
                         PassFails[k].FirstFailIndex = 0;
-                    }
-
-                    for (int k = ch; k < ch + ChannelCnt; k++)
-                    {
-                        if (!m_ChannelOn[k])
+                        if (!Dln.ReInitTarget(ch))
                         {
-                            errMsg[k] = "I2C Fail";
-                            AddLog(k, "I2C Fail");
-                            isI2cFail = true;
+                            AddLog(ch, "Target Init Fail");
+                            errMsg[k] = "I3C Fail";
                         }
                     }
 
@@ -1290,7 +1287,7 @@ namespace FZ4P
                 for (int j = ch; j < ch + ChannelCnt; j++)
                 {
                     string log = "";
-                    if (errMsg[j] == "I2C Fail" || errMsg[j] == "Barcode Check" || errMsg[j] == "Socket Empty\r\nVision Check") { yield.TotlaTested--; continue; }
+                    if (errMsg[j] == "I3C Fail" || errMsg[j] == "Barcode Check" || errMsg[j] == "Socket Empty\r\nVision Check") { yield.TotlaTested--; continue; }
 
                     //if (PassFails[j].FirstFailIndex > 0)
                     //{

@@ -73,5 +73,6 @@ namespace FZ4P
 
         byte[] RunInternalSequence(string cmd, byte[] payload = null);
         bool ChangeSlaveAddrUnified(int ch, byte origin, byte target, byte pinMode, bool isAF);
+        bool ReInitTarget(int ch);
     }
 }

@@ -449,7 +449,21 @@ namespace FZ4P.DriverIc.Adapter
 
             return result;
         }
+        public bool ReInitTarget(int ch)
+        {
+            byte[] check = ReadRegister(ch, 0x5A, 0x1008, 2, 4);
 
+            if (check != null && check.Length == 4)
+                return true;
+
+            Thread.Sleep(50);
+
+            byte[] response = SendAndReceive("RI", null, false);
+
+            return response != null &&
+                   response.Length > 0 &&
+                   response[0] == RESULT_OK;
+        }
         public bool WriteByte(int ch, int slaveAddr, int memAddr, int memCnt, byte data)
         {
             return WriteRegister(
