@@ -106,8 +106,8 @@ namespace FZ4P
                 Process.RunEnd += Process_RunEnd;
             }
 
-            Process.Dln.SwitchOn += DriverIC_SwitchOn;
-            Process.Dln.SafetyOn += DriverIC_SafetyOn;
+            //Process.Dln.SwitchOn += DriverIC_SwitchOn;
+            //Process.Dln.SafetyOn += DriverIC_SafetyOn;
             Model.Changed += Model_Changed;
             BindingUI();
 
@@ -121,23 +121,6 @@ namespace FZ4P
             lbCurrentST.Text = $"{(STATIC.Rcp.tt.CurrentST).ToString("F1")} sec";
         }
 
-        //구동완료를 외부에서 제어 하세요. 다하고 호출하세요.
-        public void Lazyinit()
-        {
-            if (Option.ScannerUse)
-            {
-                BarcodeScanDialog();
-            }
-        }
-
-        private void DriverIC_SafetyOn(object sender, EventArgs e)
-        {
-            Process.Dln.CoverUp();
-            Thread.Sleep(50);
-            Process.Dln.UnloadSocket();
-
-            Process.SuddenStop = true;
-        }
         public void SetConStatus(bool isCon)
         {
             if (isCon) 
@@ -192,20 +175,6 @@ namespace FZ4P
             {
                 if (Model.MCType == "Handler")
                 {
-                    if(Option.DryRunMode)
-                    {
-                        Random rnd = new Random();
-                        int val = rnd.Next(100);
-
-                        string res = string.Empty;
-                        if (val < 20)
-                            res = "NG";
-                        else res = "OK";
-                        STATIC.TcpConn.SendMessage(res, STATIC.TcpConn.TCPCOnState);
-                        Process.errMsg[0] = res == "OK" ? "" : $"NG,{1.ToString("D3")},";
-                        STATIC.fSystemLogView.TextView($"SendMessage : {res}");
-                    }
-                    else
                     {
                         string s = Process.errMsg[0] == "" ? "OK" : $"NG,{Process.PassFails[0].FirstFailIndex.ToString("D3")}";
                         if (Process.errMsg[0] != "" && Process.PassFails[0].FirstFailIndex == 0)
@@ -379,12 +348,6 @@ namespace FZ4P
             }
             lblCrecipe.Text = Current.ConditionName;
             lblCspec.Text = Current.SpecName;
-
-            if (Process.Rcp.Option.ScannerUse)
-            {
-                Controls.Add(Process.BarcodePannel);
-                Process.BarcodePannel.Hide();
-            }
         }
         public void BindingUIModel(string PGVer)
         {
@@ -511,7 +474,7 @@ namespace FZ4P
 
         private void SaveScreenAction()
         {
-            if (Option.ScreenCapture)
+            //if (Option.ScreenCapture)
             {
                 DateTime dtNow = DateTime.Now;   // 현재 날짜, 시간 얻기
                 string pngname = "Screen" + "_" + dtNow.ToString("dd_hh_mm_ss") + ".png";
@@ -678,33 +641,6 @@ namespace FZ4P
             //STATIC.fVision.m_ChannelOn[1] = Process.m_ChannelOn[1];
             STATIC.State = (int)STATIC.STATE.Vision;
         }
-
-        private void SaveScreenOperator_Click(object sender, EventArgs e)
-        {
-            if (Option.ScreenCapture)
-            {
-                DateTime dtNow = DateTime.Now;   // 현재 날짜, 시간 얻기
-                string pngname = "Screen" + "_" + dtNow.ToString("dd_hh_mm_ss") + ".png";
-                string sScreenCapturePath = STATIC.BaseDir + "\\Result\\ScreenCapture\\" + pngname;
-                string sDir = STATIC.BaseDir + "\\Result\\ScreenCapture";
-                Bitmap memoryImage;
-                memoryImage = new Bitmap(1906, 1080);
-                Size s = new Size(memoryImage.Width, memoryImage.Height);
-                Graphics memoryGraphics = Graphics.FromImage(memoryImage);
-
-
-                if (!Directory.Exists(sDir))
-                    Directory.CreateDirectory(sDir);
-
-                Thread.Sleep(300);
-                if (!Process.IsVirtual)
-                {
-                    memoryGraphics.CopyFromScreen(7, 31, 0, 0, s);
-                    memoryImage.Save(sScreenCapturePath);
-                }
-            }
-        }
-
         private void YieldChart_MouseDoubleClick(object sender, MouseEventArgs e)
         {
             DialogResult result = MessageBox.Show("Do you want to Reset Yield Data?", "Warning", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);

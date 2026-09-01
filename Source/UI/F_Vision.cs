@@ -4125,117 +4125,10 @@ namespace FZ4P
 
             return strtmp;
         }
-        public void UptoMeasureTxTyTz(int imgIndex)
-        {
-
-            try
-            {
-                FindResult result = MeasureTxTyTz(imgIndex, ScanName, false, cbSaveNthImg.Checked);
-
-                string strtmp = "";
-
-                strtmp += "\r\n" + imgIndex.ToString() + "\t";
-                for (int i = 0; i < 12; i++)
-                {
-                    if (m__G.oCam[0].mAzimuthPts[imgIndex][i].X == 0) continue;
-                    strtmp += m__G.oCam[0].mAzimuthPts[imgIndex][i].X.ToString("F3") + "\t" + m__G.oCam[0].mAzimuthPts[imgIndex][i].Y.ToString("F3") + "\t";
-                }
-                strtmp += ">\t";
-                for (int i = 0; i < 5; i++)
-                    strtmp += m__G.oCam[0].m_sMRinstant[i].mMTF.ToString("F0") + "\t";
-
-                tbInfo.Text += strtmp + "\r\n";
-            }
-            catch
-            {
-                MessageBox.Show("Input Correct Image Number, Then Retry.");
-                return;
-            }
-        }
         public static double mTZtoY1Y2 = 0.660316;
         public double umscale = 5.5 / Global.LensMag;                           //  rad to min
         public double minscale = 180 / Math.PI * 60;                           //  rad to min
         public string ScanName = "";
-        public FindResult MeasureTxTyTz(int imgIndex, string name = "", bool bAccu = true, bool isShow = false)
-        {
-
-            m__G.oCam[0].mFAL.LoadFMICandidate();
-
-            if (imgIndex == 0)
-            {
-                m__G.oCam[0].mFAL.RecoverFromBackupFMI();
-                m__G.oCam[0].mFAL.BackupFMI();
-            }
-            m__G.mFAL.mCandidateIndex = 0;
-            ChangeFiducialMark(0);
-
-            //if (name == "") m__G.oCam[0].ReplayBuftoCommon(ScanName, imgIndex);
-            //else m__G.oCam[0].ReplayBuftoCommon(name, imgIndex);
-
-            m__G.oCam[0].mFAL.LoadFMICandidate();
-            m__G.oCam[0].mFAL.BackupFMI();
-
-            NthMeasure(imgIndex, name, bAccu, isShow);
-
-            FindResult result = new FindResult();
-            if (Option.XYPosReverse)
-            {
-                result.cy[0] = m__G.oCam[0].mC_pX[imgIndex] * umscale;
-                result.cx[0] = m__G.oCam[0].mC_pY[imgIndex] * umscale;
-                result.cz[0] = m__G.oCam[0].mC_pZ[imgIndex] * umscale;
-                result.ty[0] = m__G.oCam[0].mC_pTX[imgIndex] * minscale;
-                result.tx[0] = m__G.oCam[0].mC_pTY[imgIndex] * minscale;
-                result.tz[0] = m__G.oCam[0].mC_pTZ[imgIndex] * minscale;
-                result.cy1[0] = result.cy[0] + result.tz[0] * mTZtoY1Y2;
-                result.cy2[0] = result.cy[0] - result.tz[0] * mTZtoY1Y2;
-            }
-            else
-            {
-                result.cx[0] = m__G.oCam[0].mC_pX[imgIndex] * umscale;
-                result.cy[0] = m__G.oCam[0].mC_pY[imgIndex] * umscale;
-                result.cz[0] = m__G.oCam[0].mC_pZ[imgIndex] * umscale;
-                result.tx[0] = m__G.oCam[0].mC_pTX[imgIndex] * minscale;
-                result.ty[0] = m__G.oCam[0].mC_pTY[imgIndex] * minscale;
-                result.tz[0] = m__G.oCam[0].mC_pTZ[imgIndex] * minscale;
-                result.cy1[0] = result.cy[0] + result.tz[0] * mTZtoY1Y2;
-                result.cy2[0] = result.cy[0] - result.tz[0] * mTZtoY1Y2;
-            }
-
-            if (Option.XDirReverse)
-            {
-                result.cx[0] *= -1;
-                result.tx[0] *= -1;
-            }
-
-            if (Option.YDirReverse)
-            {
-                result.cy[0] *= -1;
-                result.cy1[0] *= -1;
-                result.cy2[0] *= -1;
-                result.ty[0] *= -1;
-            }
-
-            if (Option.AFDirReverse)
-            {
-                result.cz[0] *= -1;
-                result.tz[0] *= -1;
-            }
-
-            if (result.cx[0] == 0)
-            {
-                result.cx[0] = 99999.9;
-                result.cy[0] = 99999.9;
-                result.cz[0] = 99999.9;
-                result.tx[0] = 99999.9;
-                result.ty[0] = 99999.9;
-                result.tz[0] = 99999.9;
-                result.cy1[0] = 99999.9;
-                result.cy2[0] = 99999.9;
-            }
-
-            return result;
-        }
-
         private void radioButton10Step_CheckedChanged(object sender, EventArgs e)
         {
             if (radioButton10Step.Checked)
@@ -11200,17 +11093,6 @@ namespace FZ4P
             Dln.CoverUp();
             Thread.Sleep(700);
             Dln.LoadSocket();
-            if (Option.SocketSensorUse)
-            {
-                st.Start();
-                while (!Dln.GetGpioStatus(12) || Dln.GetGpioStatus(13))
-                {
-                    if (st.ElapsedMilliseconds > 3000) { MessageBox.Show("Check Socket Sensor Status"); Dln.isMoving = false; return; }
-                    Thread.Sleep(10);
-                }
-                st.Stop();
-            }
-            else Thread.Sleep(2000);
             UpdateSensorState();
             Dln.isMoving = false;
 
@@ -11223,17 +11105,6 @@ namespace FZ4P
             Dln.CoverUp();
             Thread.Sleep(700);
             Dln.UnloadSocket();
-            if (Option.SocketSensorUse)
-            {
-                st.Start();
-                while (Dln.GetGpioStatus(12) || !Dln.GetGpioStatus(13))
-                {
-                    if (st.ElapsedMilliseconds > 3000) { MessageBox.Show("Check Socket Sensor Status"); Dln.isMoving = false; return; }
-                    Thread.Sleep(10);
-                }
-                st.Stop();
-            }
-            else Thread.Sleep(500);
             UpdateSensorState();
             Dln.isMoving = false;
         }
@@ -11249,18 +11120,6 @@ namespace FZ4P
                 Dln.CoverUp();
                 Thread.Sleep(700);
                 Dln.LoadSocket();
-                if (Option.SocketSensorUse)
-                {
-                    st.Start();
-                    while (!Dln.GetGpioStatus(12) || Dln.GetGpioStatus(13))
-                    {
-                        if (st.ElapsedMilliseconds > 3000) { MessageBox.Show("Check Socket Sensor Status"); Dln.isMoving = false; return; }
-                        Thread.Sleep(10);
-                    }
-                    st.Stop();
-                    Thread.Sleep(300);
-                }
-                else Thread.Sleep(2000);
                 UpdateSensorState();
                 Dln.CoverDn();
                 Thread.Sleep(500);
@@ -11281,18 +11140,7 @@ namespace FZ4P
                 Thread.Sleep(200);
                 Dln.CoverUp();
                 Thread.Sleep(700);
-                Dln.UnloadSocket();
-                if (Option.SocketSensorUse)
-                {
-                    st.Start();
-                    while (Dln.GetGpioStatus(12) || !Dln.GetGpioStatus(13))
-                    {
-                        if (st.ElapsedMilliseconds > 3000) { MessageBox.Show("Check Socket Sensor Status"); Dln.isMoving = false; return; }
-                        Thread.Sleep(10);
-                    }
-                    st.Stop();
-                }
-                else Thread.Sleep(500);
+                Dln.UnloadSocket();;
                 UpdateSensorState();
                 InitConstatus();
 
@@ -11317,57 +11165,6 @@ namespace FZ4P
 
         void UpdateSensorState()
         {
-            if (Option.SocketSensorUse)
-            {
-                if (Dln.GetGpioStatus(12) && !Dln.GetGpioStatus(13))
-                {
-                    if (lbSocketState.InvokeRequired)
-                    {
-                        lbSocketState.BeginInvoke((MethodInvoker)delegate
-                        {
-                            lbSocketState.BackColor = Color.Lime;
-                        });
-                    }
-                    else
-                        lbSocketState.BackColor = Color.Lime;
-                }
-                else if (!Dln.GetGpioStatus(12) && Dln.GetGpioStatus(13))
-                {
-                    if (lbSocketState.InvokeRequired)
-                    {
-                        lbSocketState.BeginInvoke((MethodInvoker)delegate
-                        {
-                            lbSocketState.BackColor = Color.White;
-                        });
-                    }
-                    else
-                        lbSocketState.BackColor = Color.White;
-                }
-                else
-                {
-                    if (lbSocketState.InvokeRequired)
-                    {
-                        lbSocketState.BeginInvoke((MethodInvoker)delegate
-                        {
-                            lbSocketState.BackColor = Color.DarkGray;
-                        });
-                    }
-                    else
-                        lbSocketState.BackColor = Color.DarkGray;
-                }
-            }
-            else
-            {
-                if (lbSocketState.InvokeRequired)
-                {
-                    lbSocketState.BeginInvoke((MethodInvoker)delegate
-                    {
-                        lbSocketState.BackColor = Color.White;
-                    });
-                }
-                else
-                    lbSocketState.BackColor = Color.White;
-            }
         }
         void UpdateConState()
         {
@@ -11489,149 +11286,11 @@ namespace FZ4P
 
         private void btn_PositionMove_Click(object sender, EventArgs e)
         {
-            //Dln.PowerOnOff(0, true);
-            //try
-            //{
-            //    var selected = (ActuatorType)cbb_Acturator_Model.SelectedItem;
-            //    var positionX = Convert.ToInt32(txt_PositionCode_AxisX.Text);
-            //    var positionY = Convert.ToInt32(txt_PositionCode_AxisY.Text);
-            //    var positionZ = Convert.ToInt32(txt_PositionCode_AxisZ.Text);
-            //    var Context = new DriveMoveICContext(selected, Process.DrvIC);
-            //    Context.ManualMoveAxis(0, positionX, positionY, positionZ);
-            //}
-            //catch (Exception ex)
-            //{
-            //    MessageBox.Show($"{ex.Message}");
-            //}
-
-            //Open Loop Test
-            STATIC.DrvIC.AFOnOff(0, false);
-            Thread.Sleep(5);
-
-            //Dln.WriteArray(0, STATIC.DrvIC.AF_Addr, 0xAE, new byte[] { 0x3B });
-            //Thread.Sleep(200);
-            //byte[] rbuf = new byte[1];
-            //Dln.ReadArray(0, STATIC.DrvIC.AF_Addr, 0x0B, rbuf);
-
-            //Dln.WriteByte(0, STATIC.DrvIC.AF_Addr, 0x1A, 1, 0x00);
-
-            //Dln.WriteByte(0, STATIC.DrvIC.AF_Addr, 0x0B, 1, 98);
-
-            //Dln.ReadArray(0, STATIC.DrvIC.AF_Addr, 0x0B, rbuf);
-
-            //Dln.WriteByte(0, STATIC.DrvIC.AF_Addr, 0xA6, 1, 0x7B);
-
-            //Thread.Sleep(200);
-
-            STATIC.DrvIC.AFOnOff(0, true);
-
-            Process.LEDs_All_On(0, true);
-            Thread.Sleep(50);
-
-            STATIC.DrvIC.AFMove(0, 0);
-
-            Thread.Sleep(200);
-
-            FindResult res = Process.Measure();
-            int pos = (int)res.cz[0];
-
-            STATIC.DrvIC.AFMove(0, 4095);
-
-            Thread.Sleep(200);
-            res = Process.Measure();
-
-
-
-            int Pos2 = (int)res.cz[0];
-
-            int diff = Pos2 - pos;
-
-            tbInfo.Text = "Stroke : " + diff.ToString();
-
-            Process.LEDs_All_On(0, false);
         }
 
         private void button14_Click(object sender, EventArgs e)
         {
-            Task t = new Task(() => CloseLoopAging(0));
-            t.Start();
         }
-        void CloseLoopAging(int ch)
-        {
-
-
-
-            Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0xAE, new byte[] { 0x3B });
-            Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0xA6, new byte[] { 0x7B });
-            Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0x02, new byte[] { 0x00 });
-
-            //Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0xAE, new byte[] { 0x3B });
-            //Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0xA6, new byte[] { 0x7B });
-            //Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0x02, new byte[] { 0x00 });
-            for (int i = 0; i < 15; i++)
-            {
-                STATIC.DrvIC.Move(ch, "X", 0);
-                Process.Wait(50);
-                STATIC.DrvIC.Move(ch, "X", 4095);
-                Process.Wait(50);
-            }
-            //for (int i = 0; i < 15; i++)
-            //{
-            //    STATIC.DrvIC.Move(ch, "Y", 0);
-            //    Process.Wait(50);
-            //    STATIC.DrvIC.Move(ch, "Y", 4095);
-            //    Process.Wait(50);
-            //}
-            Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0x02, new byte[] { 0x40 });
-            Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0xA6, new byte[] { 0x00 });
-            //Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0x02, new byte[] { 0x40 });
-            //Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0xA6, new byte[] { 0x00 });
-            //   STATIC.DrvIC.AF_IC_Data(ch);
-            //   int AFMin = Condition.CLAgingAFMin, AFMax = Condition.CLAgingAFMax, OISMin = Condition.CLAgingOISMin, OISMax = Condition.CLAgingOISMax, count = Condition.CLAgingCount;
-            //   int delay = 1000 / Condition.CLAgingFreq / 2;
-            //   int[] check_hall = new int[3];
-
-            //   //Process.AddLog(ch, "<<<  XYZ Aging Start  >>>");
-            //   //AddLog(ch, $"Frequency : {Condition.CLAgingFreq}");
-            //   //AddLog(ch, $"Aging Count : {count}");
-            //   //AddLog(ch, $"AF Range : {AFMin} - {AFMax}");
-            //   //AddLog(ch, $"OIS Range : {OISMin} - {OISMax}");
-
-            ////   Dln.WriteArray(ch, STATIC.DrvIC.AF_Addr, 0x02, new byte[] { 0x00 });
-            //   Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0x02, new byte[] { 0x00 });
-            //   Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0x02, new byte[] { 0x00 });
-
-            //   STATIC.DrvIC.AFMove(ch, Process.AFCenter);
-            //   STATIC.DrvIC.Move(ch, "X", Process.OISCenter);
-            //   STATIC.DrvIC.Move(ch, "Y", Process.OISCenter);
-
-            //   for (int i = 0; i < 100; i++)
-            //   {
-            //     //   STATIC.DrvIC.AFMove(ch, AFMin);
-            //  //     STATIC.DrvIC.Move(ch, "X", OISMin);
-            //       STATIC.DrvIC.Move(ch, "Y", OISMin);
-            //       Process.Wait(100);
-            //      // STATIC.DrvIC.AFMove(ch, AFMax);
-            //     //  STATIC.DrvIC.Move(ch, "X", OISMax);
-            //        STATIC.DrvIC.Move(ch, "Y", OISMax);
-            //       Process.Wait(100);
-            //   }
-
-
-            //   STATIC.DrvIC.AFMove(ch, Process.AFCenter);
-            //   STATIC.DrvIC.Move(ch, "X", Process.OISCenter);
-            //   STATIC.DrvIC.Move(ch, "Y", Process.OISCenter);
-            //   Process.Wait(delay);
-            //   //   Dln.WriteArray(ch, DrvIC.AFSlaveAddr, 0x02, new byte[] { 0x40 });
-            //   Dln.WriteArray(ch, STATIC.DrvIC.XSlaveAddr, 0x02, new byte[] { 0x40 });
-            //   Dln.WriteArray(ch, STATIC.DrvIC.Y1SlaveAddr, 0x02, new byte[] { 0x40 });
-            ////   AddLog(ch, "<<<  XYZ Aging End  >>>");
-
-            //   //PassFails[0].Results[(int)SpecItem.XYZAging].Val = 1;
-            //   //ShowDataResults(ch, (int)SpecItem.XYZAging, (int)SpecItem.XYZAging, InspType.Normal, new double[] { });
-
-        }
-
         private void BtnScanAddr_Click(object sender, EventArgs e)
         {
             // 1. UI 초기화 및 로그 출력

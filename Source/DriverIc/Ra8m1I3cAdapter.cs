@@ -1,4 +1,3 @@
-using FZ4P;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,301 +8,161 @@ using System.Threading;
 namespace FZ4P.DriverIc.Adapter
 {
     /// <summary>
-    /// RA8M1 Ethernet-to-I3C adapter.
+    /// RA8M1 I3C bridge adapter.
     ///
-    /// TCP frame (same outer framing as Esp32WifiDevice):
-    ///   PC -> RA8M1 : [BodyLength:4, Little Endian][ASCII Command][Payload]
-    ///   RA8M1 -> PC : [BodyLength:4, Little Endian][Response Body]
+    /// TCP frame:
+    ///   Request  : [BodyLength:4 LE][ASCII Command][Payload]
+    ///   Response : [BodyLength:4 LE][Payload]
     ///
-    /// Extended command protocol expected from the RA8M1 firmware:
+    /// Commands:
+    ///   IN : Initialize
+    ///   PG : Ping
+    ///   VR : Version
+    ///   WX : Register/Raw Write
+    ///   RX : Register/Raw Read
+    ///   WN : Register/Raw Write without response
+    ///   DA : ENTDAA
+    ///   DT : Device Table
+    ///   BR : I3C Bus Reset
+    ///   UA : Legacy slave address change
     ///
-    /// IN : Initialize/handshake
-    ///      Response: [Status]
+    /// WX/WN payload:
+    ///   [ch:1][slave:1][memCnt:1][memAddr:4 LE][dataLen:2 LE][data:N]
     ///
-    /// WX : Register/raw write
-    ///      Payload : [Channel:1][TargetAddr:1][MemCnt:1]
-    ///                [MemAddr:4 LE][DataLength:2 LE][Data:N]
-    ///      Response: [Status]
+    /// RX payload:
+    ///   [ch:1][slave:1][memCnt:1][memAddr:4 LE][readLen:2 LE]
     ///
-    /// RX : Register/raw read
-    ///      Payload : [Channel:1][TargetAddr:1][MemCnt:1]
-    ///                [MemAddr:4 LE][ReadLength:2 LE]
-    ///      Response: [Status][Data:N]
-    ///
-    /// WN : No-response write
-    ///      Payload is identical to WX. The firmware MUST NOT send a response.
-    ///
-    /// DA : Run ENTDAA
-    ///      Payload : [Channel:1]
-    ///      Response: [Status][DeviceCount:1]
-    ///
-    /// DT : Get I3C device table
-    ///      Payload : [Channel:1]
-    ///      Response: [Status][DeviceCount:1][DeviceRecord:10 * Count]
-    ///      Record  : [DynamicAddr:1][StaticAddr:1][BCR:1][DCR:1][PID:6 BE]
-    ///
-    /// BR : Reset I3C bus
-    ///      Payload : [Channel:1]
-    ///      Response: [Status]
-    ///
-    /// VR : Get protocol/firmware version
-    ///      Response: [Status][ProtocolMajor][ProtocolMinor][FwMajor][FwMinor]...
-    ///
-    /// PG : Ping
-    ///      Response: [Status]
-    ///
-    /// UA : Existing unified legacy-address-change sequence
-    ///      Payload : [Origin][Target][PinMode][IsAF]
-    ///      Response: [Status][FoundAddress]
-    ///
-    /// Status value 1 means success. Other values are errors.
+    /// RX response:
+    ///   [status:1][data:N]
     /// </summary>
     public sealed class Ra8m1I3cAdapter : IDlnInterface, IDisposable
     {
-        #region Nested types
-
-        private enum Ra8m1Status : byte
-        {
-            Fail = 0,
-            Ok = 1,
-            Nack = 2,
-            Timeout = 3,
-            BusBusy = 4,
-            InvalidParameter = 5,
-            AddressNotFound = 6,
-            Unsupported = 7,
-            FspError = 8
-        }
-
-        /// <summary>
-        /// One record returned by the DT command.
-        /// </summary>
-        public sealed class I3cDeviceInfo
-        {
-            public byte DynamicAddress { get; internal set; }
-            public byte StaticAddress { get; internal set; }
-            public byte Bcr { get; internal set; }
-            public byte Dcr { get; internal set; }
-            public ulong ProvisionalId { get; internal set; }
-
-            public override string ToString()
-            {
-                return string.Format(
-                    "Dynamic=0x{0:X2}, Static=0x{1:X2}, BCR=0x{2:X2}, DCR=0x{3:X2}, PID=0x{4:X12}",
-                    DynamicAddress,
-                    StaticAddress,
-                    Bcr,
-                    Dcr,
-                    ProvisionalId);
-            }
-        }
-
-        #endregion
-
-        #region Constants
-
-        private const string CommandInitialize = "IN";
-        private const string CommandWrite = "WX";
-        private const string CommandRead = "RX";
-        private const string CommandWriteNoResponse = "WN";
-        private const string CommandEntdaa = "DA";
-        private const string CommandDeviceTable = "DT";
-        private const string CommandBusReset = "BR";
-        private const string CommandVersion = "VR";
-        private const string CommandPing = "PG";
-        private const string CommandChangeAddress = "UA";
-
-        private const int ResponseHeaderLength = 4;
-        private const int ReadWriteCommonPayloadLength = 9;
-        private const int DeviceRecordLength = 10;
-        private const int DefaultMaxResponseLength = 1024 * 1024;
-
-        #endregion
-
-        #region Fields
+        private const byte RESULT_OK = 1;
+        private const int DEFAULT_PORT = 8080;
+        private const int DEFAULT_CONNECT_TIMEOUT_MS = 2000;
+        private const int DEFAULT_COMM_TIMEOUT_MS = 2000;
+        private const int MAX_BODY_LENGTH = 1024 * 1024;
 
         private readonly string _ipAddress;
         private readonly int _port;
         private readonly int _connectTimeoutMs;
         private readonly int _communicationTimeoutMs;
-
-        private readonly object _communicationLock = new object();
-        private readonly object _targetConfigurationLock = new object();
-        private readonly Dictionary<int, int> _registerAddressLengthByTarget =
-            new Dictionary<int, int>();
+        private readonly object _commLock = new object();
 
         private TcpClient _client;
         private NetworkStream _stream;
         private bool _disposed;
-        private int _defaultRegisterAddressLength;
-        private string _lastError = string.Empty;
-        private byte _lastStatus;
-
-        #endregion
-
-        #region Constructor
-
-        /// <summary>
-        /// Creates the adapter and performs IN handshake immediately.
-        /// </summary>
-        public Ra8m1I3cAdapter(string ipAddress, int port = 8080)
-            : this(
-                ipAddress,
-                port,
-                2000,
-                2000,
-                1,
-                true)
-        {
-        }
-
-        /// <summary>
-        /// Creates the adapter with explicit communication options.
-        /// Set autoInitialize to false when DeviceFactory will call Init() separately.
-        /// </summary>
-        public Ra8m1I3cAdapter(
-            string ipAddress,
-            int port,
-            int connectTimeoutMs,
-            int communicationTimeoutMs,
-            int defaultRegisterAddressLength,
-            bool autoInitialize)
-        {
-            if (string.IsNullOrWhiteSpace(ipAddress))
-                throw new ArgumentException("IP address is required.", nameof(ipAddress));
-
-            if (port < 1 || port > 65535)
-                throw new ArgumentOutOfRangeException(nameof(port));
-
-            if (connectTimeoutMs <= 0)
-                throw new ArgumentOutOfRangeException(nameof(connectTimeoutMs));
-
-            if (communicationTimeoutMs <= 0)
-                throw new ArgumentOutOfRangeException(nameof(communicationTimeoutMs));
-
-            ValidateRegisterAddressLength(defaultRegisterAddressLength, false);
-
-            _ipAddress = ipAddress;
-            _port = port;
-            _connectTimeoutMs = connectTimeoutMs;
-            _communicationTimeoutMs = communicationTimeoutMs;
-            _defaultRegisterAddressLength = defaultRegisterAddressLength;
-
-            // This test configuration does not use a safety GPIO.
-            IsSafeOn = true;
-
-            if (autoInitialize && !Init())
-            {
-                Log(0, "[RA8M1-I3C] Initial connection failed. It can be retried by calling Init().");
-            }
-        }
-
-        #endregion
-
-        #region IDlnInterface properties/events
 
         public bool IsRun { get; set; }
         public bool IsSafeOn { get; set; }
         public bool isMoving { get; set; }
         public bool m_bOccupied { get; set; }
+        public uint PortCount { get { return 1; } }
 
-        public uint PortCount
+        public event EventHandler SwitchOn;
+        public event EventHandler SafetyOn;
+
+        public Ra8m1I3cAdapter(string ipAddress)
+            : this(ipAddress, DEFAULT_PORT, DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_COMM_TIMEOUT_MS, false)
         {
-            get { return 1; }
         }
+
+        public Ra8m1I3cAdapter(string ipAddress, int port)
+            : this(ipAddress, port, DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_COMM_TIMEOUT_MS, false)
+        {
+        }
+
+        public Ra8m1I3cAdapter(
+            string ipAddress,
+            int port,
+            int connectTimeoutMs,
+            int communicationTimeoutMs,
+            bool autoInitialize = false)
+        {
+            if (string.IsNullOrWhiteSpace(ipAddress))
+                throw new ArgumentException("IP address is empty.", nameof(ipAddress));
+
+            _ipAddress = ipAddress;
+            _port = port;
+            _connectTimeoutMs = connectTimeoutMs;
+            _communicationTimeoutMs = communicationTimeoutMs;
+
+            if (autoInitialize)
+                Init();
+        }
+        #region Legacy Compatibility
 
         public bool IsConnected
         {
             get
             {
-                lock (_communicationLock)
-                {
-                    return IsTransportReady();
-                }
+                return _client != null &&
+                       _client.Connected &&
+                       _stream != null;
             }
         }
 
-        public string LastError
+
+        // 기존 STATIC 코드 호환용.
+        // 현재 실제 memCnt는 각 Read/Write 호출에서 직접 전달하므로
+        // 내부 설정값은 사용하지 않는다.
+        public void ConfigureTarget(int ch,
+            int slaveAddr,
+            int registerAddressLength)
         {
-            get { return _lastError; }
+            // 현재 구조에서는 별도 설정 필요 없음.
         }
 
-        public byte LastStatus
+
+        // 기존 STATIC 코드 호환용.
+        public bool RemoveRegisterAddressLengthConfiguration(
+            int ch, int slaveAddr)
         {
-            get { return _lastStatus; }
+            // 현재 구조에서는 별도 설정 필요 없음.
+            return true;
         }
 
-        public int LastEntdaaDeviceCount { get; private set; }
 
-        public int MaxResponseLength { get; set; } = DefaultMaxResponseLength;
-
-        public int DefaultRegisterAddressLength
+        // 기존 코드가 out 없이 호출하는 경우를 위한 overload.
+        public bool RunEntdaa(int ch)
         {
-            get { return _defaultRegisterAddressLength; }
-            set
-            {
-                ValidateRegisterAddressLength(value, false);
-                _defaultRegisterAddressLength = value;
-            }
-        }
+            int deviceCount;
 
-#pragma warning disable 0067
-        // GPIO is not used by this RA8M1 test equipment, so these events are not raised.
-        public event EventHandler SwitchOn;
-        public event EventHandler SafetyOn;
-#pragma warning restore 0067
+            return RunEntdaa(
+                ch,
+                out deviceCount);
+        }
 
         #endregion
-
-        #region Initialization / connection
-
         public bool Init()
         {
-            ThrowIfDisposed();
-
-            if (IsVirtualMode())
-            {
-                IsRun = true;
-                ClearLastError();
-                return true;
-            }
-
-            lock (_communicationLock)
+            lock (_commLock)
             {
                 try
                 {
-                    CloseConnectionCore();
+                    ThrowIfDisposed();
 
-                    if (!ConnectEngineCore())
-                    {
-                        IsRun = false;
+                    if (!ConnectEngine())
                         return false;
-                    }
 
-                    byte[] response = SendAndReceiveCore(
-                        CommandInitialize,
-                        null,
-                        true,
-                        false);
+                    byte[] response = SendAndReceiveInternal("IN", null);
 
-                    if (!IsSuccessResponse(response))
-                    {
-                        IsRun = false;
-                        CloseConnectionCore();
-                        SetError("RA8M1 handshake failed.");
-                        return false;
-                    }
+                    bool ok = response != null &&
+                              response.Length > 0 &&
+                              response[0] == RESULT_OK;
 
-                    IsRun = true;
-                    RegisterCommunicationSuccess();
-                    Log(0, "[RA8M1-I3C] Connection established.");
-                    return true;
+                    //IsRun = ok;
+
+                    if (!ok)
+                        CloseConnection();
+
+                    return ok;
                 }
                 catch (Exception ex)
                 {
-                    IsRun = false;
-                    CloseConnectionCore();
-                    RegisterCommunicationFailure("Init", ex);
+                    //IsRun = false;
+                    CloseConnection();
+                    SetError("RA8M1 Init Fail : " + ex.Message);
                     return false;
                 }
             }
@@ -311,474 +170,186 @@ namespace FZ4P.DriverIc.Adapter
 
         public void Disconnect()
         {
-            lock (_communicationLock)
+            lock (_commLock)
             {
-                CloseConnectionCore();
+                CloseConnection();
+                //IsRun = false;
             }
         }
 
-        private bool ConnectEngineCore()
+        private bool ConnectEngine()
         {
+            CloseConnection();
+
+            TcpClient client = new TcpClient();
+            client.NoDelay = true;
+
             try
             {
-                CloseConnectionCore();
+                IAsyncResult ar = client.BeginConnect(_ipAddress, _port, null, null);
 
-                _client = new TcpClient();
-                _client.NoDelay = true;
-                _client.Client.SetSocketOption(
-                    SocketOptionLevel.Socket,
-                    SocketOptionName.KeepAlive,
-                    true);
-
-                IAsyncResult asyncResult = _client.BeginConnect(
-                    _ipAddress,
-                    _port,
-                    null,
-                    null);
-
-                WaitHandle waitHandle = asyncResult.AsyncWaitHandle;
-                try
+                using (WaitHandle waitHandle = ar.AsyncWaitHandle)
                 {
-                    if (!waitHandle.WaitOne(_connectTimeoutMs, false))
+                    if (!waitHandle.WaitOne(_connectTimeoutMs))
                     {
-                        SetError(string.Format(
-                            "Connect timeout: {0}:{1}",
-                            _ipAddress,
-                            _port));
-                        CloseConnectionCore();
+                        client.Close();
                         return false;
                     }
-
-                    _client.EndConnect(asyncResult);
-                }
-                finally
-                {
-                    waitHandle.Close();
                 }
 
-                _stream = _client.GetStream();
-                _stream.ReadTimeout = _communicationTimeoutMs;
-                _stream.WriteTimeout = _communicationTimeoutMs;
+                client.EndConnect(ar);
 
+                NetworkStream stream = client.GetStream();
+                stream.ReadTimeout = _communicationTimeoutMs;
+                stream.WriteTimeout = _communicationTimeoutMs;
+
+                _client = client;
+                _stream = stream;
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                CloseConnectionCore();
-                SetError("ConnectEngine failed: " + ex.Message);
+                try { client.Close(); } catch { }
+                CloseConnection();
                 return false;
             }
         }
 
-        private bool EnsureConnectedCore()
+        private void EnsureConnected()
         {
-            if (IsTransportReady())
-                return true;
+            if (_client != null && _client.Connected && _stream != null)
+                return;
 
-            return Init();
+            if (!ConnectEngine())
+                throw new IOException("RA8M1 TCP connection failed. " + _ipAddress + ":" + _port);
         }
 
-        private bool IsTransportReady()
+        private void CloseConnection()
         {
-            return _client != null &&
-                   _client.Connected &&
-                   _stream != null;
-        }
-
-        private void CloseConnectionCore()
-        {
-            try
-            {
-                if (_stream != null)
-                    _stream.Close();
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                if (_client != null)
-                    _client.Close();
-            }
-            catch
-            {
-            }
+            try { if (_stream != null) _stream.Close(); } catch { }
+            try { if (_client != null) _client.Close(); } catch { }
 
             _stream = null;
             _client = null;
-            IsRun = false;
         }
 
-        #endregion
-
-        #region TCP engine
-
-        /// <summary>
-        /// Sends one command and reads one length-prefixed response.
-        /// allowRetry should normally be true only for idempotent read/query commands.
-        /// </summary>
-        private byte[] SendAndReceive(
-            string command,
-            byte[] payload,
-            bool allowRetry)
+        private byte[] SendAndReceive(string command, byte[] payload, bool retryOnTransportError)
         {
-            ThrowIfDisposed();
-
-            int attemptCount = allowRetry ? 2 : 1;
-
-            for (int attempt = 0; attempt < attemptCount; attempt++)
+            lock (_commLock)
             {
-                lock (_communicationLock)
+                ThrowIfDisposed();
+
+                try
                 {
-                    try
-                    {
-                        if (!EnsureConnectedCore())
-                            throw new IOException("RA8M1 is not connected.");
+                    EnsureConnected();
+                    return SendAndReceiveInternal(command, payload);
+                }
+                catch (Exception ex)
+                {
+                    CloseConnection();
 
-                        return SendAndReceiveCore(
-                            command,
-                            payload,
-                            false,
-                            allowRetry);
-                    }
-                    catch (Exception ex)
+                    if (retryOnTransportError)
                     {
-                        CloseConnectionCore();
-
-                        bool hasNextAttempt = attempt + 1 < attemptCount;
-                        if (!hasNextAttempt)
+                        try
                         {
-                            RegisterCommunicationFailure(command, ex);
+                            EnsureConnected();
+                            return SendAndReceiveInternal(command, payload);
+                        }
+                        catch (Exception retryEx)
+                        {
+                            CloseConnection();
+                            SetError("RA8M1 TCP Fail : " + retryEx.Message);
                             return null;
                         }
-
-                        Log(0, string.Format(
-                            "[RA8M1-I3C] {0} communication error: {1}. Reconnecting once.",
-                            command,
-                            ex.Message));
                     }
+
+                    SetError("RA8M1 TCP Fail : " + ex.Message);
+                    return null;
                 }
-
-                Thread.Sleep(100);
             }
-
-            return null;
         }
 
-        /// <summary>
-        /// Caller must hold _communicationLock.
-        /// isInitCall prevents recursive reconnect/Init processing.
-        /// </summary>
-        private byte[] SendAndReceiveCore(
-            string command,
-            byte[] payload,
-            bool isInitCall,
-            bool allowRetry)
+        private byte[] SendAndReceiveInternal(string command, byte[] payload)
         {
-            ValidateCommand(command);
-
-            if (!isInitCall && !IsTransportReady())
-                throw new IOException("TCP transport is not connected.");
-
-            byte[] packet = BuildPacket(command, payload);
+            byte[] packet = MakePacket(command, payload);
             _stream.Write(packet, 0, packet.Length);
 
-            byte[] responseHeader = new byte[ResponseHeaderLength];
-            if (!ReadExact(_stream, responseHeader, responseHeader.Length))
-                throw new EndOfStreamException("Response header read failed.");
+            byte[] lengthBuffer = new byte[4];
+            ReadExact(_stream, lengthBuffer, 4);
 
-            int responseLength = ReadInt32LittleEndian(responseHeader, 0);
-            if (responseLength < 0 || responseLength > MaxResponseLength)
-            {
-                throw new InvalidDataException(
-                    "Invalid response length: " + responseLength);
-            }
+            int responseLength =
+                lengthBuffer[0] |
+                (lengthBuffer[1] << 8) |
+                (lengthBuffer[2] << 16) |
+                (lengthBuffer[3] << 24);
+
+            if (responseLength < 0 || responseLength > MAX_BODY_LENGTH)
+                throw new IOException("Invalid response length : " + responseLength);
+
+            if (responseLength == 0)
+                return new byte[0];
 
             byte[] response = new byte[responseLength];
-            if (responseLength > 0 &&
-                !ReadExact(_stream, response, responseLength))
-            {
-                throw new EndOfStreamException("Response body read failed.");
-            }
-
+            ReadExact(_stream, response, responseLength);
             return response;
         }
 
-        /// <summary>
-        /// Sends WN and intentionally reads no response.
-        /// Never retries automatically because duplicate writes may be unsafe.
-        /// </summary>
         private bool SendOnly(string command, byte[] payload)
         {
-            ThrowIfDisposed();
-
-            lock (_communicationLock)
+            lock (_commLock)
             {
+                ThrowIfDisposed();
+
                 try
                 {
-                    if (!EnsureConnectedCore())
-                        throw new IOException("RA8M1 is not connected.");
+                    EnsureConnected();
 
-                    byte[] packet = BuildPacket(command, payload);
+                    byte[] packet = MakePacket(command, payload);
                     _stream.Write(packet, 0, packet.Length);
                     return true;
                 }
                 catch (Exception ex)
                 {
-                    CloseConnectionCore();
-                    RegisterCommunicationFailure(command, ex);
+                    CloseConnection();
+                    SetError("RA8M1 SendOnly Fail : " + ex.Message);
                     return false;
                 }
             }
         }
 
-        private static byte[] BuildPacket(string command, byte[] payload)
+        private static byte[] MakePacket(string command, byte[] payload)
         {
-            ValidateCommand(command);
-
-            byte[] commandBytes = Encoding.ASCII.GetBytes(command);
+            byte[] cmdBytes = Encoding.ASCII.GetBytes(command);
             int payloadLength = payload == null ? 0 : payload.Length;
-            int bodyLength = checked(commandBytes.Length + payloadLength);
+            int bodyLength = cmdBytes.Length + payloadLength;
 
-            byte[] packet = new byte[ResponseHeaderLength + bodyLength];
-            WriteInt32LittleEndian(packet, 0, bodyLength);
+            byte[] packet = new byte[4 + bodyLength];
 
-            Buffer.BlockCopy(
-                commandBytes,
-                0,
-                packet,
-                ResponseHeaderLength,
-                commandBytes.Length);
+            packet[0] = (byte)(bodyLength & 0xFF);
+            packet[1] = (byte)((bodyLength >> 8) & 0xFF);
+            packet[2] = (byte)((bodyLength >> 16) & 0xFF);
+            packet[3] = (byte)((bodyLength >> 24) & 0xFF);
+
+            Buffer.BlockCopy(cmdBytes, 0, packet, 4, cmdBytes.Length);
 
             if (payloadLength > 0)
-            {
-                Buffer.BlockCopy(
-                    payload,
-                    0,
-                    packet,
-                    ResponseHeaderLength + commandBytes.Length,
-                    payloadLength);
-            }
+                Buffer.BlockCopy(payload, 0, packet, 4 + cmdBytes.Length, payloadLength);
 
             return packet;
         }
 
-        private static bool ReadExact(Stream stream, byte[] buffer, int length)
+        private static void ReadExact(NetworkStream stream, byte[] buffer, int length)
         {
-            int totalRead = 0;
+            int offset = 0;
 
-            while (totalRead < length)
+            while (offset < length)
             {
-                int read = stream.Read(
-                    buffer,
-                    totalRead,
-                    length - totalRead);
+                int read = stream.Read(buffer, offset, length - offset);
 
                 if (read <= 0)
-                    return false;
+                    throw new IOException("TCP connection closed while receiving.");
 
-                totalRead += read;
-            }
-
-            return true;
-        }
-
-        private static void ValidateCommand(string command)
-        {
-            if (string.IsNullOrEmpty(command))
-                throw new ArgumentException("Command is required.", nameof(command));
-
-            for (int i = 0; i < command.Length; i++)
-            {
-                if (command[i] > 0x7F)
-                    throw new ArgumentException("Command must be ASCII.", nameof(command));
-            }
-        }
-
-        #endregion
-
-        #region Target configuration
-
-        /// <summary>
-        /// Configures the register-address length used by the legacy WriteArray/ReadArray
-        /// overloads that do not contain memCnt in IDlnInterface.
-        /// </summary>
-        public void ConfigureRegisterAddressLength(
-            int ch,
-            int slaveAddr,
-            int registerAddressLength)
-        {
-            ValidateByteRange(ch, nameof(ch));
-            ValidateByteRange(slaveAddr, nameof(slaveAddr));
-            ValidateRegisterAddressLength(registerAddressLength, false);
-
-            int key = MakeTargetKey(ch, slaveAddr);
-
-            lock (_targetConfigurationLock)
-            {
-                _registerAddressLengthByTarget[key] = registerAddressLength;
-            }
-        }
-
-        /// <summary>
-        /// Compatibility alias used by earlier integration examples.
-        /// </summary>
-        public void ConfigureTarget(
-            int ch,
-            int slaveAddr,
-            int registerAddressLength)
-        {
-            ConfigureRegisterAddressLength(
-                ch,
-                slaveAddr,
-                registerAddressLength);
-        }
-
-        public bool RemoveRegisterAddressLengthConfiguration(
-            int ch,
-            int slaveAddr)
-        {
-            ValidateByteRange(ch, nameof(ch));
-            ValidateByteRange(slaveAddr, nameof(slaveAddr));
-
-            int key = MakeTargetKey(ch, slaveAddr);
-
-            lock (_targetConfigurationLock)
-            {
-                return _registerAddressLengthByTarget.Remove(key);
-            }
-        }
-
-        private int GetRegisterAddressLength(int ch, int slaveAddr)
-        {
-            int key = MakeTargetKey(ch, slaveAddr);
-
-            lock (_targetConfigurationLock)
-            {
-                int value;
-                if (_registerAddressLengthByTarget.TryGetValue(key, out value))
-                    return value;
-            }
-
-            return DefaultRegisterAddressLength;
-        }
-
-        private static int MakeTargetKey(int ch, int slaveAddr)
-        {
-            return ((ch & 0xFF) << 8) | (slaveAddr & 0xFF);
-        }
-
-        #endregion
-
-        #region Common register transfer
-
-        private bool WriteRegister(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            byte[] data)
-        {
-            if (IsVirtualMode())
-                return true;
-
-            try
-            {
-                byte[] payload = MakeWritePayload(
-                    ch,
-                    slaveAddr,
-                    memAddr,
-                    memCnt,
-                    data);
-
-                // Do not automatically resend a write after an ambiguous TCP failure.
-                byte[] response = SendAndReceive(
-                    CommandWrite,
-                    payload,
-                    false);
-
-                if (!IsSuccessResponse(response))
-                {
-                    RegisterProtocolFailure(CommandWrite, response);
-                    return false;
-                }
-
-                RegisterCommunicationSuccess();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                RegisterCommunicationFailure(CommandWrite, ex);
-                return false;
-            }
-        }
-
-        private byte[] ReadRegister(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            int readLength)
-        {
-            if (IsVirtualMode())
-                return new byte[readLength];
-
-            try
-            {
-                byte[] payload = MakeReadPayload(
-                    ch,
-                    slaveAddr,
-                    memAddr,
-                    memCnt,
-                    readLength);
-
-                // A read is idempotent, so one reconnect/retry is permitted.
-                byte[] response = SendAndReceive(
-                    CommandRead,
-                    payload,
-                    true);
-
-                if (response == null || response.Length < 1)
-                {
-                    RegisterProtocolFailure(CommandRead, response);
-                    return null;
-                }
-
-                _lastStatus = response[0];
-                if (response[0] != (byte)Ra8m1Status.Ok)
-                {
-                    RegisterProtocolFailure(CommandRead, response);
-                    return null;
-                }
-
-                if (response.Length != readLength + 1)
-                {
-                    SetError(string.Format(
-                        "RX response length mismatch. Expected={0}, Actual={1}",
-                        readLength + 1,
-                        response.Length));
-                    return null;
-                }
-
-                byte[] result = new byte[readLength];
-                if (readLength > 0)
-                {
-                    Buffer.BlockCopy(
-                        response,
-                        1,
-                        result,
-                        0,
-                        readLength);
-                }
-
-                RegisterCommunicationSuccess();
-                return result;
-            }
-            catch (Exception ex)
-            {
-                RegisterCommunicationFailure(CommandRead, ex);
-                return null;
+                offset += read;
             }
         }
 
@@ -789,34 +360,25 @@ namespace FZ4P.DriverIc.Adapter
             int memCnt,
             byte[] data)
         {
-            ValidateTransferArguments(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                data == null ? -1 : data.Length);
-
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
 
-            byte[] payload = new byte[ReadWriteCommonPayloadLength + data.Length];
+            byte[] payload = new byte[9 + data.Length];
 
-            payload[0] = (byte)ch;
-            payload[1] = (byte)slaveAddr;
-            payload[2] = (byte)memCnt;
+            payload[0] = checked((byte)ch);
+            payload[1] = checked((byte)slaveAddr);
+            payload[2] = checked((byte)memCnt);
 
-            WriteInt32LittleEndian(payload, 3, memAddr);
-            WriteUInt16LittleEndian(payload, 7, (ushort)data.Length);
+            payload[3] = (byte)(memAddr & 0xFF);
+            payload[4] = (byte)((memAddr >> 8) & 0xFF);
+            payload[5] = (byte)((memAddr >> 16) & 0xFF);
+            payload[6] = (byte)((memAddr >> 24) & 0xFF);
+
+            payload[7] = (byte)(data.Length & 0xFF);
+            payload[8] = (byte)((data.Length >> 8) & 0xFF);
 
             if (data.Length > 0)
-            {
-                Buffer.BlockCopy(
-                    data,
-                    0,
-                    payload,
-                    ReadWriteCommonPayloadLength,
-                    data.Length);
-            }
+                Buffer.BlockCopy(data, 0, payload, 9, data.Length);
 
             return payload;
         }
@@ -828,53 +390,67 @@ namespace FZ4P.DriverIc.Adapter
             int memCnt,
             int readLength)
         {
-            ValidateTransferArguments(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                readLength);
+            return new byte[]
+            {
+                checked((byte)ch),
+                checked((byte)slaveAddr),
+                checked((byte)memCnt),
 
-            byte[] payload = new byte[ReadWriteCommonPayloadLength];
+                (byte)(memAddr & 0xFF),
+                (byte)((memAddr >> 8) & 0xFF),
+                (byte)((memAddr >> 16) & 0xFF),
+                (byte)((memAddr >> 24) & 0xFF),
 
-            payload[0] = (byte)ch;
-            payload[1] = (byte)slaveAddr;
-            payload[2] = (byte)memCnt;
-
-            WriteInt32LittleEndian(payload, 3, memAddr);
-            WriteUInt16LittleEndian(payload, 7, (ushort)readLength);
-
-            return payload;
+                (byte)(readLength & 0xFF),
+                (byte)((readLength >> 8) & 0xFF)
+            };
         }
 
-        private static void ValidateTransferArguments(
+        private bool WriteRegister(
             int ch,
             int slaveAddr,
             int memAddr,
             int memCnt,
-            int dataLength)
+            byte[] data)
         {
-            ValidateByteRange(ch, nameof(ch));
-            ValidateByteRange(slaveAddr, nameof(slaveAddr));
-            ValidateRegisterAddressLength(memCnt, true);
+            byte[] payload = MakeWritePayload(ch, slaveAddr, memAddr, memCnt, data);
 
-            if (memAddr < 0)
-                throw new ArgumentOutOfRangeException(nameof(memAddr));
+            // Write는 중복 실행 방지를 위해 자동 retry 안 함.
+            byte[] response = SendAndReceive("WX", payload, false);
 
-            if (dataLength < 0 || dataLength > ushort.MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(dataLength));
+            return response != null &&
+                   response.Length > 0 &&
+                   response[0] == RESULT_OK;
         }
 
-        #endregion
-
-        #region IDlnInterface write methods
-
-        public bool WriteByte(
+        private byte[] ReadRegister(
             int ch,
             int slaveAddr,
             int memAddr,
             int memCnt,
-            byte data)
+            int length)
+        {
+            byte[] payload = MakeReadPayload(ch, slaveAddr, memAddr, memCnt, length);
+
+            // Read는 transport 오류 시 1회 retry 허용.
+            byte[] response = SendAndReceive("RX", payload, true);
+
+            if (response == null ||
+                response.Length != length + 1 ||
+                response[0] != RESULT_OK)
+            {
+                return null;
+            }
+
+            byte[] result = new byte[length];
+
+            if (length > 0)
+                Buffer.BlockCopy(response, 1, result, 0, length);
+
+            return result;
+        }
+
+        public bool WriteByte(int ch, int slaveAddr, int memAddr, int memCnt, byte data)
         {
             return WriteRegister(
                 ch,
@@ -884,31 +460,18 @@ namespace FZ4P.DriverIc.Adapter
                 new byte[] { data });
         }
 
-        public bool Write2Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            ushort data)
+        public bool Write2Byte(int ch, int slaveAddr, int memAddr, int memCnt, ushort data)
         {
-            return WriteRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                new byte[]
-                {
-                    (byte)((data >> 8) & 0xFF),
-                    (byte)(data & 0xFF)
-                });
+            byte[] tmp =
+            {
+                (byte)(data & 0xFF),
+                (byte)((data >> 8) & 0xFF)
+            };
+
+            return WriteRegister(ch, slaveAddr, memAddr, memCnt, tmp);
         }
 
-        public bool Write2Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            short data)
+        public bool Write2Byte(int ch, int slaveAddr, int memAddr, int memCnt, short data)
         {
             return Write2Byte(
                 ch,
@@ -918,33 +481,20 @@ namespace FZ4P.DriverIc.Adapter
                 unchecked((ushort)data));
         }
 
-        public bool Write4Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            uint data)
+        public bool Write4Byte(int ch, int slaveAddr, int memAddr, int memCnt, uint data)
         {
-            return WriteRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                new byte[]
-                {
-                    (byte)((data >> 24) & 0xFF),
-                    (byte)((data >> 16) & 0xFF),
-                    (byte)((data >> 8) & 0xFF),
-                    (byte)(data & 0xFF)
-                });
+            byte[] tmp =
+            {
+                (byte)(data & 0xFF),
+                (byte)((data >> 8) & 0xFF),
+                (byte)((data >> 16) & 0xFF),
+                (byte)((data >> 24) & 0xFF)
+            };
+
+            return WriteRegister(ch, slaveAddr, memAddr, memCnt, tmp);
         }
 
-        public bool Write4Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt,
-            int data)
+        public bool Write4Byte(int ch, int slaveAddr, int memAddr, int memCnt, int data)
         {
             return Write4Byte(
                 ch,
@@ -954,26 +504,18 @@ namespace FZ4P.DriverIc.Adapter
                 unchecked((uint)data));
         }
 
-        /// <summary>
-        /// IDlnInterface compatibility overload. memCnt is obtained from the target map.
-        /// </summary>
-        public bool WriteArray(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            byte[] data)
+        public bool WriteArray(int ch, int slaveAddr, int memAddr, byte[] data)
         {
-            return WriteRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                GetRegisterAddressLength(ch, slaveAddr),
-                data);
+            // 최신 DLN과 동일: memCnt = 2
+            return WriteRegister(ch, slaveAddr, memAddr, 2, data);
         }
 
-        /// <summary>
-        /// Extended overload for new code that can specify memCnt explicitly.
-        /// </summary>
+        public bool WriteArray(int ch, int slaveAddr, byte[] data)
+        {
+            // Register address 없는 raw transfer.
+            return WriteRegister(ch, slaveAddr, 0, 0, data);
+        }
+
         public bool WriteArray(
             int ch,
             int slaveAddr,
@@ -981,33 +523,9 @@ namespace FZ4P.DriverIc.Adapter
             int memCnt,
             byte[] data)
         {
-            return WriteRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                data);
+            return WriteRegister(ch, slaveAddr, memAddr, memCnt, data);
         }
 
-        /// <summary>
-        /// Raw private transfer without a register-address prefix.
-        /// </summary>
-        public bool WriteArray(
-            int ch,
-            int slaveAddr,
-            byte[] data)
-        {
-            return WriteRegister(
-                ch,
-                slaveAddr,
-                0,
-                0,
-                data);
-        }
-
-        /// <summary>
-        /// Sends WN. The RA8M1 firmware must not send any response for this command.
-        /// </summary>
         public bool WriteArrayNoResponse(
             int ch,
             int slaveAddr,
@@ -1015,183 +533,90 @@ namespace FZ4P.DriverIc.Adapter
             int memCnt,
             byte[] data)
         {
-            if (IsVirtualMode())
-                return true;
-
-            try
-            {
-                byte[] payload = MakeWritePayload(
-                    ch,
-                    slaveAddr,
-                    memAddr,
-                    memCnt,
-                    data);
-
-                bool sent = SendOnly(
-                    CommandWriteNoResponse,
-                    payload);
-
-                if (sent)
-                    RegisterCommunicationSuccess();
-
-                return sent;
-            }
-            catch (Exception ex)
-            {
-                RegisterCommunicationFailure(CommandWriteNoResponse, ex);
-                return false;
-            }
+            byte[] payload = MakeWritePayload(ch, slaveAddr, memAddr, memCnt, data);
+            return SendOnly("WN", payload);
         }
 
-        #endregion
-
-        #region IDlnInterface read methods
-
-        public byte ReadByte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public byte ReadByte(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                1);
-
-            return data == null || data.Length != 1
-                ? byte.MaxValue
-                : data[0];
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 1);
+            return data == null ? byte.MaxValue : data[0];
         }
 
-        public byte? ReadByteNull(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public byte? ReadByteNull(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            if (IsVirtualMode())
-                return null;
-
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                1);
-
-            if (data == null || data.Length != 1)
-                return null;
-
-            return data[0];
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 1);
+            return data == null ? (byte?)null : data[0];
         }
 
-        public ushort Read2Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public ushort Read2Byte(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                2);
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 2);
 
-            if (data == null || data.Length != 2)
+            if (data == null)
                 return ushort.MaxValue;
 
-            return (ushort)((data[0] << 8) | data[1]);
+            return (ushort)(data[0] | (data[1] << 8));
         }
 
-        public short Read2Byte_signed(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public short Read2Byte_signed(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                2);
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 2);
 
-            if (data == null || data.Length != 2)
+            if (data == null)
                 return short.MinValue;
 
-            ushort unsignedValue = (ushort)((data[0] << 8) | data[1]);
-            return unchecked((short)unsignedValue);
+            ushort raw = (ushort)(data[0] | (data[1] << 8));
+            return unchecked((short)raw);
         }
 
-        public uint Read4Byte(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public uint Read4Byte(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                4);
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 4);
 
-            if (data == null || data.Length != 4)
-                return uint.MaxValue;
+            if (data == null)
+                return uint.MinValue;
 
-            return ((uint)data[0] << 24) |
-                   ((uint)data[1] << 16) |
-                   ((uint)data[2] << 8) |
-                   data[3];
+            return
+                ((uint)data[0]) |
+                ((uint)data[1] << 8) |
+                ((uint)data[2] << 16) |
+                ((uint)data[3] << 24);
         }
 
-        public int Read4Byte_signed(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            int memCnt)
+        public int Read4Byte_signed(int ch, int slaveAddr, int memAddr, int memCnt)
         {
-            byte[] data = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                4);
+            byte[] data = ReadRegister(ch, slaveAddr, memAddr, memCnt, 4);
 
-            if (data == null || data.Length != 4)
+            if (data == null)
                 return int.MinValue;
 
-            uint unsignedValue = ((uint)data[0] << 24) |
-                                 ((uint)data[1] << 16) |
-                                 ((uint)data[2] << 8) |
-                                 data[3];
+            uint raw =
+                ((uint)data[0]) |
+                ((uint)data[1] << 8) |
+                ((uint)data[2] << 16) |
+                ((uint)data[3] << 24);
 
-            return unchecked((int)unsignedValue);
+            return unchecked((int)raw);
         }
 
-        /// <summary>
-        /// IDlnInterface compatibility overload. memCnt is obtained from the target map.
-        /// </summary>
-        public bool ReadArray(
-            int ch,
-            int slaveAddr,
-            int memAddr,
-            byte[] data)
+        public bool ReadArray(int ch, int slaveAddr, int memAddr, byte[] data)
         {
-            return ReadArray(
-                ch,
-                slaveAddr,
-                memAddr,
-                GetRegisterAddressLength(ch, slaveAddr),
-                data);
+            if (data == null)
+                return false;
+
+            // 최신 DLN과 동일: memCnt = 2
+            return ReadArray(ch, slaveAddr, memAddr, 2, data);
         }
 
-        /// <summary>
-        /// Extended overload for new code that can specify memCnt explicitly.
-        /// </summary>
+        public bool ReadArray(int ch, int slaveAddr, byte[] data)
+        {
+            if (data == null)
+                return false;
+
+            return ReadArray(ch, slaveAddr, 0, 0, data);
+        }
+
         public bool ReadArray(
             int ch,
             int slaveAddr,
@@ -1202,210 +627,45 @@ namespace FZ4P.DriverIc.Adapter
             if (data == null)
                 return false;
 
-            byte[] result = ReadRegister(
-                ch,
-                slaveAddr,
-                memAddr,
-                memCnt,
-                data.Length);
+            byte[] response =
+                ReadRegister(
+                    ch,
+                    slaveAddr,
+                    memAddr,
+                    memCnt,
+                    data.Length);
 
-            if (result == null || result.Length != data.Length)
+            if (response == null ||
+                response.Length != data.Length)
+            {
                 return false;
+            }
 
             if (data.Length > 0)
-            {
-                Buffer.BlockCopy(
-                    result,
-                    0,
-                    data,
-                    0,
-                    data.Length);
-            }
+                Buffer.BlockCopy(response, 0, data, 0, data.Length);
 
             return true;
         }
-
-        /// <summary>
-        /// Raw private transfer without a register-address prefix.
-        /// </summary>
-        public bool ReadArray(
-            int ch,
-            int slaveAddr,
-            byte[] data)
-        {
-            return ReadArray(
-                ch,
-                slaveAddr,
-                0,
-                0,
-                data);
-        }
-
-        #endregion
-
-        #region I3C-specific commands
 
         public bool Ping()
         {
-            if (IsVirtualMode())
-                return true;
+            byte[] response = SendAndReceive("PG", null, true);
 
-            byte[] response = SendAndReceive(
-                CommandPing,
-                null,
-                true);
-
-            bool success = IsSuccessResponse(response);
-            if (success)
-                RegisterCommunicationSuccess();
-            else
-                RegisterProtocolFailure(CommandPing, response);
-
-            return success;
-        }
-
-        public bool RunEntdaa(int ch = 0)
-        {
-            if (IsVirtualMode())
-            {
-                LastEntdaaDeviceCount = 0;
-                return true;
-            }
-
-            ValidateByteRange(ch, nameof(ch));
-
-            byte[] response = SendAndReceive(
-                CommandEntdaa,
-                new byte[] { (byte)ch },
-                false);
-
-            if (!IsSuccessResponse(response))
-            {
-                LastEntdaaDeviceCount = 0;
-                RegisterProtocolFailure(CommandEntdaa, response);
-                return false;
-            }
-
-            LastEntdaaDeviceCount = response.Length >= 2
-                ? response[1]
-                : 0;
-
-            RegisterCommunicationSuccess();
-            return true;
-        }
-
-        public bool RunEntdaa(int ch, out int deviceCount)
-        {
-            bool result = RunEntdaa(ch);
-            deviceCount = LastEntdaaDeviceCount;
-            return result;
-        }
-
-        public I3cDeviceInfo[] GetDeviceTable(int ch = 0)
-        {
-            if (IsVirtualMode())
-                return new I3cDeviceInfo[0];
-
-            ValidateByteRange(ch, nameof(ch));
-
-            byte[] response = SendAndReceive(
-                CommandDeviceTable,
-                new byte[] { (byte)ch },
-                true);
-
-            if (!IsSuccessResponse(response) || response.Length < 2)
-            {
-                RegisterProtocolFailure(CommandDeviceTable, response);
-                return new I3cDeviceInfo[0];
-            }
-
-            int deviceCount = response[1];
-            int expectedLength = 2 + deviceCount * DeviceRecordLength;
-
-            if (response.Length != expectedLength)
-            {
-                SetError(string.Format(
-                    "DT response length mismatch. Expected={0}, Actual={1}",
-                    expectedLength,
-                    response.Length));
-                return new I3cDeviceInfo[0];
-            }
-
-            I3cDeviceInfo[] devices = new I3cDeviceInfo[deviceCount];
-            int offset = 2;
-
-            for (int i = 0; i < deviceCount; i++)
-            {
-                ulong provisionalId = 0;
-                for (int pidIndex = 0; pidIndex < 6; pidIndex++)
-                {
-                    provisionalId =
-                        (provisionalId << 8) |
-                        response[offset + 4 + pidIndex];
-                }
-
-                devices[i] = new I3cDeviceInfo
-                {
-                    DynamicAddress = response[offset],
-                    StaticAddress = response[offset + 1],
-                    Bcr = response[offset + 2],
-                    Dcr = response[offset + 3],
-                    ProvisionalId = provisionalId
-                };
-
-                offset += DeviceRecordLength;
-            }
-
-            RegisterCommunicationSuccess();
-            return devices;
-        }
-
-        public bool ResetI3cBus(int ch = 0)
-        {
-            if (IsVirtualMode())
-                return true;
-
-            ValidateByteRange(ch, nameof(ch));
-
-            byte[] response = SendAndReceive(
-                CommandBusReset,
-                new byte[] { (byte)ch },
-                false);
-
-            bool success = IsSuccessResponse(response);
-            if (success)
-                RegisterCommunicationSuccess();
-            else
-                RegisterProtocolFailure(CommandBusReset, response);
-
-            return success;
-        }
-
-        public byte[] GetVersionRaw()
-        {
-            if (IsVirtualMode())
-                return new byte[] { (byte)Ra8m1Status.Ok, 0, 0, 0, 0 };
-
-            byte[] response = SendAndReceive(
-                CommandVersion,
-                null,
-                true);
-
-            if (!IsSuccessResponse(response))
-            {
-                RegisterProtocolFailure(CommandVersion, response);
-                return null;
-            }
-
-            RegisterCommunicationSuccess();
-            return response;
+            return response != null &&
+                   response.Length > 0 &&
+                   response[0] == RESULT_OK;
         }
 
         public string GetVersion()
         {
-            byte[] response = GetVersionRaw();
-            if (response == null || response.Length < 1)
+            byte[] response = SendAndReceive("VR", null, true);
+
+            if (response == null ||
+                response.Length == 0 ||
+                response[0] != RESULT_OK)
+            {
                 return string.Empty;
+            }
 
             if (response.Length >= 5)
             {
@@ -1417,22 +677,119 @@ namespace FZ4P.DriverIc.Adapter
                     response[4]);
             }
 
-            return "RA8M1 I3C";
+            return "OK";
         }
 
-        #endregion
-
-        #region Other IDlnInterface methods
-
-        public byte[] RunInternalSequence(
-            string cmd,
-            byte[] payload = null)
+        public bool RunEntdaa(int ch, out int deviceCount)
         {
-            if (IsVirtualMode())
-                return new byte[0];
+            deviceCount = 0;
 
-            // The side effects of an arbitrary internal command are unknown,
-            // so it is not automatically resent after an ambiguous failure.
+            byte[] response =
+                SendAndReceive(
+                    "DA",
+                    new byte[] { checked((byte)ch) },
+                    false);
+
+            if (response == null ||
+                response.Length < 1 ||
+                response[0] != RESULT_OK)
+            {
+                return false;
+            }
+
+            if (response.Length >= 2)
+                deviceCount = response[1];
+
+            return true;
+        }
+
+        public I3cDeviceInfo[] GetDeviceTable(int ch)
+        {
+            byte[] response =
+                SendAndReceive(
+                    "DT",
+                    new byte[] { checked((byte)ch) },
+                    true);
+
+            if (response == null ||
+                response.Length < 2 ||
+                response[0] != RESULT_OK)
+            {
+                return new I3cDeviceInfo[0];
+            }
+
+            int count = response[1];
+            const int recordSize = 10;
+
+            if (response.Length < 2 + count * recordSize)
+                return new I3cDeviceInfo[0];
+
+            List<I3cDeviceInfo> list =
+                new List<I3cDeviceInfo>();
+
+            int offset = 2;
+
+            for (int i = 0; i < count; i++)
+            {
+                ulong pid = 0;
+
+                for (int j = 0; j < 6; j++)
+                    pid = (pid << 8) | response[offset + 4 + j];
+
+                list.Add(
+                    new I3cDeviceInfo
+                    {
+                        DynamicAddress = response[offset + 0],
+                        StaticAddress = response[offset + 1],
+                        Bcr = response[offset + 2],
+                        Dcr = response[offset + 3],
+                        ProvisionalId = pid
+                    });
+
+                offset += recordSize;
+            }
+
+            return list.ToArray();
+        }
+
+        public bool ResetI3cBus(int ch)
+        {
+            byte[] response =
+                SendAndReceive(
+                    "BR",
+                    new byte[] { checked((byte)ch) },
+                    false);
+
+            return response != null &&
+                   response.Length > 0 &&
+                   response[0] == RESULT_OK;
+        }
+
+        public sealed class I3cDeviceInfo
+        {
+            public byte DynamicAddress { get; internal set; }
+            public byte StaticAddress { get; internal set; }
+            public byte Bcr { get; internal set; }
+            public byte Dcr { get; internal set; }
+            public ulong ProvisionalId { get; internal set; }
+
+            public override string ToString()
+            {
+                return string.Format(
+                    "DA=0x{0:X2}, SA=0x{1:X2}, BCR=0x{2:X2}, DCR=0x{3:X2}, PID=0x{4:X12}",
+                    DynamicAddress,
+                    StaticAddress,
+                    Bcr,
+                    Dcr,
+                    ProvisionalId);
+            }
+        }
+
+        public byte[] RunInternalSequence(string cmd, byte[] payload = null)
+        {
+            if (string.IsNullOrEmpty(cmd))
+                return null;
+
             return SendAndReceive(cmd, payload, false);
         }
 
@@ -1443,268 +800,47 @@ namespace FZ4P.DriverIc.Adapter
             byte pinMode,
             bool isAF)
         {
-            if (IsVirtualMode())
-                return true;
-
-            ValidateByteRange(ch, nameof(ch));
-
             byte[] payload =
             {
+                checked((byte)ch),
                 origin,
                 target,
                 pinMode,
-                (byte)(isAF ? 1 : 0)
+                isAF ? (byte)1 : (byte)0
             };
 
-            byte[] response = SendAndReceive(
-                CommandChangeAddress,
-                payload,
-                false);
+            byte[] response =
+                SendAndReceive(
+                    "UA",
+                    payload,
+                    false);
 
-            if (!IsSuccessResponse(response) || response.Length < 2)
-            {
-                RegisterProtocolFailure(CommandChangeAddress, response);
-                SetError(isAF
-                    ? "AF legacy address change failed."
-                    : "OIS legacy address change failed.");
-                return false;
-            }
-
-            byte foundAddress = response[1];
-
-            if (isAF)
-            {
-                Log(ch, "IC Address check OK");
-                Log(ch, string.Format(
-                    "I3C/I2C address change from 0x{0:X2} to 0x{1:X2}",
-                    foundAddress,
-                    target));
-            }
-            else
-            {
-                string label = pinMode == 0x02 ? "X" : "Y";
-                Log(ch, string.Format(
-                    "{0} legacy slave-address change finished: 0x{1:X2}",
-                    label,
-                    target));
-            }
-
-            RegisterCommunicationSuccess();
-            return true;
+            return response != null &&
+                   response.Length > 0 &&
+                   response[0] == RESULT_OK;
         }
 
-        // The current RA8M1 test equipment does not use GPIO, sockets,
-        // cover control, power control, current measurement, LED or peak detector.
-        public void PowerOnOff(int port, bool IsOn = true)
-        {
-        }
-
-        public void LoadSocket()
-        {
-        }
-
-        public void UnloadSocket()
-        {
-        }
-
-        public void CoverDn()
-        {
-        }
-
-        public void CoverUp()
-        {
-        }
-
-        public void SetSocketSensor(bool isOn)
-        {
-        }
-
-        public bool GetGpioStatus(int input)
-        {
-            return false;
-        }
-
-        public void PeakDetector(
-            int ADCNumber,
-            PeakDetectState state)
-        {
-        }
-
-        public double GetCurrent(int ch, int mode)
-        {
-            return 0.0;
-        }
-
-        public void SetLEDpower(int id, int value)
-        {
-        }
-
-        #endregion
-
-        #region Error/log helpers
+        // GPIO / Light / Socket 미사용.
+        public void PowerOnOff(int port, bool IsOn = true) { }
+        public void LoadSocket() { }
+        public void UnloadSocket() { }
+        public void CoverDn() { }
+        public void CoverUp() { }
+        public void SetSocketSensor(bool isOn) { }
+        public bool GetGpioStatus(int input) { return false; }
+        public void PeakDetector(int ADCNumber, PeakDetectState state) { }
+        public double GetCurrent(int ch, int mode) { return 0.0; }
+        public void SetLEDpower(int id, int value) { }
 
         public void SetError(string s)
-        {
-            _lastError = s ?? string.Empty;
-            Log(0, "[RA8M1-I3C] " + _lastError);
-        }
-
-        private bool IsSuccessResponse(byte[] response)
-        {
-            if (response == null || response.Length < 1)
-                return false;
-
-            _lastStatus = response[0];
-            return response[0] == (byte)Ra8m1Status.Ok;
-        }
-
-        private void RegisterProtocolFailure(
-            string command,
-            byte[] response)
-        {
-            if (response == null || response.Length == 0)
-            {
-                SetError(command + " failed: no response.");
-                IncrementI2cFailureCount();
-                return;
-            }
-
-            _lastStatus = response[0];
-            SetError(string.Format(
-                "{0} failed. Status={1} ({2})",
-                command,
-                response[0],
-                GetStatusName(response[0])));
-            IncrementI2cFailureCount();
-        }
-
-        private void RegisterCommunicationFailure(
-            string operation,
-            Exception ex)
-        {
-            SetError(string.Format(
-                "{0} communication failed: {1}",
-                operation,
-                ex == null ? "Unknown error" : ex.Message));
-            IncrementI2cFailureCount();
-        }
-
-        private static string GetStatusName(byte status)
-        {
-            if (Enum.IsDefined(typeof(Ra8m1Status), status))
-                return ((Ra8m1Status)status).ToString();
-
-            return "Unknown";
-        }
-
-        private void RegisterCommunicationSuccess()
-        {
-            ClearLastError();
-
-            try
-            {
-                STATIC.I2CFailcnt = 0;
-            }
-            catch
-            {
-            }
-        }
-
-        private void IncrementI2cFailureCount()
-        {
-            try
-            {
-                STATIC.I2CFailcnt++;
-            }
-            catch
-            {
-            }
-        }
-
-        private void ClearLastError()
-        {
-            _lastError = string.Empty;
-        }
-
-        private static void Log(int channel, string message)
         {
             try
             {
                 if (STATIC.Process != null)
-                    STATIC.Process.AddLog(channel, message);
+                    STATIC.Process.AddLog(0, "[RA8M1-I3C] " + s);
             }
             catch
             {
-            }
-        }
-
-        private static bool IsVirtualMode()
-        {
-            try
-            {
-                return STATIC.Process != null &&
-                       STATIC.Process.IsVirtual;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        #endregion
-
-        #region Binary helpers / validation
-
-        private static void WriteInt32LittleEndian(
-            byte[] buffer,
-            int offset,
-            int value)
-        {
-            buffer[offset] = (byte)(value & 0xFF);
-            buffer[offset + 1] = (byte)((value >> 8) & 0xFF);
-            buffer[offset + 2] = (byte)((value >> 16) & 0xFF);
-            buffer[offset + 3] = (byte)((value >> 24) & 0xFF);
-        }
-
-        private static int ReadInt32LittleEndian(
-            byte[] buffer,
-            int offset)
-        {
-            return buffer[offset] |
-                   (buffer[offset + 1] << 8) |
-                   (buffer[offset + 2] << 16) |
-                   (buffer[offset + 3] << 24);
-        }
-
-        private static void WriteUInt16LittleEndian(
-            byte[] buffer,
-            int offset,
-            ushort value)
-        {
-            buffer[offset] = (byte)(value & 0xFF);
-            buffer[offset + 1] = (byte)((value >> 8) & 0xFF);
-        }
-
-        private static void ValidateByteRange(
-            int value,
-            string parameterName)
-        {
-            if (value < byte.MinValue || value > byte.MaxValue)
-                throw new ArgumentOutOfRangeException(parameterName);
-        }
-
-        private static void ValidateRegisterAddressLength(
-            int memCnt,
-            bool allowZero)
-        {
-            int minimum = allowZero ? 0 : 1;
-
-            if (memCnt < minimum || memCnt > 4)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(memCnt),
-                    "Register-address length must be between " +
-                    minimum + " and 4 bytes.");
             }
         }
 
@@ -1714,27 +850,22 @@ namespace FZ4P.DriverIc.Adapter
                 throw new ObjectDisposedException(nameof(Ra8m1I3cAdapter));
         }
 
-        #endregion
-
-        #region IDisposable
-
         public void Dispose()
         {
             if (_disposed)
                 return;
 
-            lock (_communicationLock)
+            lock (_commLock)
             {
                 if (_disposed)
                     return;
 
-                CloseConnectionCore();
                 _disposed = true;
+                CloseConnection();
+                //IsRun = false;
             }
 
             GC.SuppressFinalize(this);
         }
-
-        #endregion
     }
 }

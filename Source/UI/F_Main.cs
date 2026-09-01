@@ -105,7 +105,7 @@ namespace FZ4P
                     P_Vision.Size = new Size(50, 31);
                     P_Vision.Hide();
                     STATIC.fManage.BindingUIModel(this.Text);
-                    Process.StartI2CMonitor();
+                    //Process.StartI2CMonitor();
                     break;
                 case (int)STATIC.STATE.Main:
                     //InitCondition();
@@ -224,23 +224,6 @@ namespace FZ4P
 
             }
 
-            if (Rcp.Option.ScannerUse)
-            {
-                try
-                {
-                    var parmas = CommunicationTypeParamSelector.GetFileParams();
-                    Scanner.SetParam(parmas);
-                    Scanner.Connection();
-                    Scanner.OnReceveData += OnRecive;
-                    Scanner.OnScannerMessage += Scanner_OnScannerMessage;
-
-                    //STATIC.fManage.Lazyinit();
-                }
-                catch (Exception ex)
-                {
-                    STATIC.fSystemLogView.TextView($"Scanner Configurator : {ex.Message}");
-                }
-            }
             STATIC.fVision.MyOwner = this;
 
 
@@ -348,7 +331,6 @@ namespace FZ4P
                     else if (data[j].Contains("Open"))
                     {
                         Process.UnloadSeq();
-                        if (!Option.SocketSensorUse) Thread.Sleep(2000);
                         STATIC.TcpConn.SendMessage("Open", STATIC.TcpConn.TCPCOnState);
                         STATIC.fSystemLogView.TextView($"SendMessage : Open");
 
@@ -864,7 +846,6 @@ namespace FZ4P
             DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
             InitDataSpec();
             Process.InitResultData();
-            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
         }
 
         private void SaveSpec_Click(object sender, EventArgs e)
@@ -872,7 +853,6 @@ namespace FZ4P
             UpdateUI();
             DataIO.SerializeToXMLFile(Spec, STATIC.SpecDir + Current.SpecName);
             Process.InitResultData();
-            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
         }
 
         private void SaveAsSpec_Click(object sender, EventArgs e)
@@ -885,7 +865,6 @@ namespace FZ4P
             DataIO.SerializeToXMLFile(Current, STATIC.CurrentPath);
             SpecFileName.Text = Current.SpecName;
             Process.InitResultData();
-            Process.tiltChart[0].SetRings(new double[] { Spec.specList[(int)SpecItem.AF_Tilt].MaxSpec });
         }
 
         private void ApplyTester_Click(object sender, EventArgs e)
@@ -907,7 +886,6 @@ namespace FZ4P
             Model.Save();
 
             InitModel();
-            STATIC.Dln.SetSocketSensor(Option.SocketSensorUse);
         }
 
         private void RemoveItem_Click(object sender, EventArgs e)

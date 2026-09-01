@@ -119,7 +119,7 @@ namespace FZ4P
                     if (DLNdevice[i].I2cMaster.Ports[0].Restrictions.Frequency == Restriction.MustBeDisabled)
                         DLNdevice[i].I2cMaster.Ports[0].Enabled = false;
 
-                    DLNdevice[i].I2cMaster.Ports[0].Frequency = STATIC.Rcp.Condition.iI2Cclock * 1000;
+                    DLNdevice[i].I2cMaster.Ports[0].Frequency = 400 * 1000;
                     DLNdevice[i].I2cMaster.Ports[0].Enabled = true;
                 }
                 catch (Exception ex)
@@ -189,33 +189,33 @@ namespace FZ4P
                 DLNgpio[2].Pins[9].PulldownEnabled = true;
             }
 
-            DLNgpio[1].Pins[9].Enabled = true;
-            DLNgpio[1].Pins[9].Direction = 0;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
-            DLNgpio[1].Pins[9].OutputValue = 1;
-            DLNgpio[1].Pins[9].PulldownEnabled = true;
+            //DLNgpio[1].Pins[9].Enabled = true;
+            //DLNgpio[1].Pins[9].Direction = 0;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
+            //DLNgpio[1].Pins[9].OutputValue = 1;
+            //DLNgpio[1].Pins[9].PulldownEnabled = true;
 
 
-            DLNgpio[1].Pins[8].ConditionMetThreadSafe += SWEventHandler;
-            DLNgpio[1].Pins[8].SetEventConfiguration(Dln.Gpio.EventType.LevelHigh, 50);
+            //DLNgpio[1].Pins[8].ConditionMetThreadSafe += SWEventHandler;
+            //DLNgpio[1].Pins[8].SetEventConfiguration(Dln.Gpio.EventType.LevelHigh, 50);
 
-            DLNgpio[1].Pins[10].Enabled = true;
-            DLNgpio[1].Pins[10].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
+            //DLNgpio[1].Pins[10].Enabled = true;
+            //DLNgpio[1].Pins[10].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
 
-            DLNgpio[1].Pins[20].Enabled = true;
-            DLNgpio[1].Pins[20].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out
-                                                 //  
+            //DLNgpio[1].Pins[20].Enabled = true;
+            //DLNgpio[1].Pins[20].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out
+            //                                     //  
 
-            DLNgpio[1].Pins[11].Enabled = true;
-            DLNgpio[1].Pins[11].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
+            //DLNgpio[1].Pins[11].Enabled = true;
+            //DLNgpio[1].Pins[11].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
 
-            DLNgpio[1].Pins[21].Enabled = true;
-            DLNgpio[1].Pins[21].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
+            //DLNgpio[1].Pins[21].Enabled = true;
+            //DLNgpio[1].Pins[21].Direction = 1;   //  0 ~ 15 : 0(in), 24 ~ 31 : 1(out)
 
-            DLNgpio[1].Pins[(int)GPIONumber.SocketOutPut].ConditionMetThreadSafe += SafeEventHandler;
-            DLNgpio[1].Pins[(int)GPIONumber.SocketOutPut].SetEventConfiguration(Dln.Gpio.EventType.LevelHigh, 50);
+            //DLNgpio[1].Pins[(int)GPIONumber.SocketOutPut].ConditionMetThreadSafe += SafeEventHandler;
+            //DLNgpio[1].Pins[(int)GPIONumber.SocketOutPut].SetEventConfiguration(Dln.Gpio.EventType.LevelHigh, 50);
 
 
-            SetSocketSensor(STATIC.Rcp.Option.SocketSensorUse);
+            //SetSocketSensor(STATIC.Rcp.Option.SocketSensorUse);
 
             debounceLogics = new[] { new SignalDebounceLogic(),
                                      new SignalDebounceLogic(),};
@@ -554,7 +554,7 @@ namespace FZ4P
                 lock (I2cLock)
                 {
                     if (mode == 0) { DLNi2c[ch + 1].Read(0x40, 1, RegAddr, buffer2); } // AF
-                    else DLNi2c[ch + 1].Read(0x41, 1, RegAddr, buffer2);
+                    else DLNi2c[ch].Read(0x41, 1, RegAddr, buffer2);
                 }
                 res = (buffer2[0] * 256 + buffer2[1]) / 10.0 + 10;
             }
@@ -578,7 +578,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return true;
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, 1, memAddr, data);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, 2, memAddr, data);
                 }
 
                 return true;
@@ -606,7 +606,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return true;
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, data);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, data);
                 }
 
                 return true;
@@ -635,7 +635,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return true;
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, 1, memAddr, data);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, 2, memAddr, data);
                 }
 
                 return true;
@@ -659,7 +659,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return true;
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, data);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, data);
                 }
 
                 return true;
@@ -683,7 +683,7 @@ namespace FZ4P
             try
             {
                 if (Process.IsVirtual) return true;
-                lock (I2cLock) { if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, memCnt, memAddr, tmp); }
+                lock (I2cLock) { if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, memCnt, memAddr, tmp); }
                 return true;
             }
             catch
@@ -698,11 +698,15 @@ namespace FZ4P
         }
         public bool Write2Byte(int ch, int slaveAddr, int memAddr, int memCnt, ushort data)
         {
-            byte[] tmp = new byte[] { (byte)((data >> 8) & 0xff), (byte)(data & 0xff) };
+            byte[] tmp = { 0, 0 };
+
+            tmp[0] = (byte)(data & 0xff);
+            tmp[1] = (byte)((data >> 8) & 0xff);
+
             try
             {
                 if (Process.IsVirtual) return true;
-                lock (I2cLock) { if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, memCnt, memAddr, tmp); }
+                lock (I2cLock) { if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, memCnt, memAddr, tmp); }
                 return true;
             }
             catch
@@ -717,11 +721,15 @@ namespace FZ4P
         }
         public bool Write2Byte(int ch, int slaveAddr, int memAddr, int memCnt, short data)
         {
-            byte[] tmp = new byte[] { (byte)((data >> 8) & 0xff), (byte)(data & 0xff) };
+            byte[] tmp = { 0, 0 };
+
+            tmp[0] = (byte)(data & 0xff);
+            tmp[1] = (byte)((data >> 8) & 0xff);
+
             try
             {
                 if (Process.IsVirtual) return true;
-                lock (I2cLock) { if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, memCnt, memAddr, tmp); }
+                lock (I2cLock) { if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, memCnt, memAddr, tmp); }
                 return true;
             }
             catch
@@ -736,11 +744,17 @@ namespace FZ4P
         }
         public bool Write4Byte(int ch, int slaveAddr, int memAddr, int memCnt, uint data)
         {
-            byte[] tmp = new byte[] { (byte)((data >> 24) & 0xff), (byte)((data >> 16) & 0xff), (byte)((data >> 8) & 0xff), (byte)(data & 0xff) };
+            byte[] tmp = { 0, 0, 0, 0 };
+
+            tmp[0] = (byte)(data & 0xff);
+            tmp[1] = (byte)((data >> 8) & 0xff);
+            tmp[2] = (byte)((data >> 16) & 0xff);
+            tmp[3] = (byte)((data >> 24) & 0xff); 
+            
             try
             {
                 if (Process.IsVirtual) return true;
-                lock (I2cLock) { if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, memCnt, memAddr, tmp); }
+                lock (I2cLock) { if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, memCnt, memAddr, tmp); }
                 return true;
             }
             catch
@@ -755,11 +769,17 @@ namespace FZ4P
         }
         public bool Write4Byte(int ch, int slaveAddr, int memAddr, int memCnt, int data)
         {
-            byte[] tmp = new byte[] { (byte)((data >> 24) & 0xff), (byte)((data >> 16) & 0xff), (byte)((data >> 8) & 0xff), (byte)(data & 0xff) };
+            byte[] tmp = { 0, 0, 0, 0 };
+
+            tmp[0] = (byte)(data & 0xff);
+            tmp[1] = (byte)((data >> 8) & 0xff);
+            tmp[2] = (byte)((data >> 16) & 0xff);
+            tmp[3] = (byte)((data >> 24) & 0xff);
+
             try
             {
                 if (Process.IsVirtual) return true;
-                lock (I2cLock) { if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Write(slaveAddr, memCnt, memAddr, tmp); }
+                lock (I2cLock) { if (DLNi2c[ch] != null) DLNi2c[ch].Write(slaveAddr, memCnt, memAddr, tmp); }
                 return true;
             }
             catch
@@ -781,7 +801,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return null;
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
                 return tmp[0];
             }
@@ -804,7 +824,7 @@ namespace FZ4P
                 if (Process.IsVirtual) return tmp[0];
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
                 return tmp[0];
             }
@@ -827,9 +847,9 @@ namespace FZ4P
                 if (Process.IsVirtual) return tmp[0];
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
-                return (ushort)(tmp[0] << 8 | tmp[1]);
+                return (ushort)(tmp[0] + (tmp[1] << 8));
             }
             catch
             {
@@ -850,9 +870,9 @@ namespace FZ4P
                 if (Process.IsVirtual) return tmp[0];
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
-                return (short)(tmp[0] << 8 | tmp[1]);
+                return (short)(tmp[0] + (tmp[1] << 8));
             }
             catch
             {
@@ -873,9 +893,9 @@ namespace FZ4P
                 if (Process.IsVirtual) return tmp[0];
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
-                return (uint)(tmp[0] << 24 | tmp[1] << 16 | tmp[2] << 8 | tmp[3]);
+                return (uint)(tmp[0] | (tmp[1] << 8) | (tmp[2] << 16) | (tmp[3] << 24));
             }
             catch
             {
@@ -885,7 +905,7 @@ namespace FZ4P
                     SetError("Dln ReadFail");
 
                 }
-                return uint.MaxValue;
+                return uint.MinValue;
             }
         }
         public int Read4Byte_signed(int ch, int slaveAddr, int memAddr, int memCnt)
@@ -896,9 +916,9 @@ namespace FZ4P
                 if (Process.IsVirtual) return tmp[0];
                 lock (I2cLock)
                 {
-                    if (DLNi2c[ch + 1] != null) DLNi2c[ch + 1].Read(slaveAddr, memCnt, memAddr, tmp);
+                    if (DLNi2c[ch] != null) DLNi2c[ch].Read(slaveAddr, memCnt, memAddr, tmp);
                 }
-                return (int)(tmp[0] << 24 | tmp[1] << 16 | tmp[2] << 8 | tmp[3]);
+                return (int)(tmp[0] | (tmp[1] << 8) | (tmp[2] << 16) | (tmp[3] << 24));
             }
             catch
             {

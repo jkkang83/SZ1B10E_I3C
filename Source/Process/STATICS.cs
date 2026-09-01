@@ -81,12 +81,12 @@ namespace FZ4P
                             config.Ra8m1Port,
                             config.Ra8m1ConnectTimeoutMs,
                             config.Ra8m1RequestTimeoutMs,
-                            config.I3cDefaultRegisterAddressLength,
                             false);
 
-                    // 객체는 연결 실패 시에도 유지합니다.
-                    // 이후 STATIC.Dln.Init() 또는 각 Read/Write 호출에서 재접속할 수 있습니다.
+                    // 객체는 연결 실패 시에도 유지
+                    // 이후 STATIC.Dln.Init() 또는 Read/Write 호출 시 재접속 가능
                     i3cAdapter.Init();
+
                     mainDln = i3cAdapter;
                     break;
 
